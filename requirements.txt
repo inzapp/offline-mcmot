@@ -1,0 +1,9 @@
+numpy>=1.23,<2
+scipy>=1.10
+opencv-python>=4.8
+PyYAML>=6
+onnxruntime>=1.14
+tensorflow>=2.12,<3
+pandas>=1.4
+# Optional: enables mirrored Parquet outputs.
+pyarrow>=10
