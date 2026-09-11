@@ -7,10 +7,11 @@ from pathlib import Path
 import numpy as np
 
 from mcmot.export_html import export_standalone_html
+from mcmot.config import select_output_root
 from mcmot.geometry import bbox_xyxy, distance_to_polygon, iou, is_watch, point_in_polygon
 from mcmot.global_match import union_duration
 from mcmot.global_match import build_global
-from mcmot.tracker import BBoxKalman, Track, paired_frames
+from mcmot.tracker import BBoxKalman, Track, assignment, paired_frames
 
 
 class ExportHtmlTest(unittest.TestCase):
@@ -25,6 +26,24 @@ class ExportHtmlTest(unittest.TestCase):
             exported = target.read_text(encoding="utf-8")
             self.assertIn('src="data:image/png;base64,', exported)
             self.assertIn('href="https://example.com"', exported)
+
+
+class OutputSelectionTest(unittest.TestCase):
+    def test_fresh_output_uses_next_number_and_latest_reuses_highest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "output_site"
+            base.mkdir()
+            (root / "output_site2").mkdir()
+            (root / "output_site4").mkdir()
+            cfg = {"output_root": str(base)}
+            self.assertEqual(select_output_root(cfg, fresh=True)["output_root"], str(root / "output_site5"))
+            self.assertEqual(select_output_root(cfg, fresh=False)["output_root"], str(root / "output_site4"))
+
+    def test_unused_output_keeps_base_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory) / "output_site"
+            self.assertEqual(select_output_root({"output_root": str(base)}, fresh=True)["output_root"], str(base))
 
 
 class GeometryTest(unittest.TestCase):
@@ -62,6 +81,30 @@ class TimeTest(unittest.TestCase):
         intervals = [(start, start + timedelta(seconds=5)),
                      (start + timedelta(seconds=3), start + timedelta(seconds=7))]
         self.assertEqual(union_duration(intervals), 7)
+
+
+class TrackingRecoveryTest(unittest.TestCase):
+    def test_bev_recovers_confirmed_track_after_bbox_jump(self):
+        start = datetime(2026, 9, 4, 10)
+        track = Track(1, BBoxKalman(np.array([.2, .2, .1, .2])), start, start, start,
+                      hits=5, confirmed=True)
+        track.kf.P = np.eye(8) * .001
+        track.bev_history.append((start, .4, .4))
+        detection = {"cx": .8, "cy": .8, "w": .1, "h": .2, "bev_x": .41, "bev_y": .4}
+        matches, _, _ = assignment([track], [detection], .05, 13.28,
+                                   start + timedelta(seconds=1), .025, .012)
+        self.assertEqual(matches, [(0, 0)])
+
+    def test_bev_recovery_does_not_attach_distant_detection(self):
+        start = datetime(2026, 9, 4, 10)
+        track = Track(1, BBoxKalman(np.array([.2, .2, .1, .2])), start, start, start,
+                      hits=5, confirmed=True)
+        track.kf.P = np.eye(8) * .001
+        track.bev_history.append((start, .4, .4))
+        detection = {"cx": .8, "cy": .8, "w": .1, "h": .2, "bev_x": .7, "bev_y": .7}
+        matches, _, _ = assignment([track], [detection], .05, 13.28,
+                                   start + timedelta(seconds=1), .025, .012)
+        self.assertEqual(matches, [])
 
 
 class IOTest(unittest.TestCase):

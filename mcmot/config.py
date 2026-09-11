@@ -30,3 +30,22 @@ def ensure_output_dirs(cfg: dict[str, Any]) -> dict[str, Path]:
         target.mkdir(parents=True, exist_ok=True)
         result[name] = target
     return result
+
+
+def select_output_root(cfg: dict[str, Any], fresh: bool) -> dict[str, Any]:
+    """Choose a non-overwriting output for a new run, or the latest for reuse."""
+    selected = dict(cfg)
+    base = Path(cfg["output_root"])
+    candidates: list[tuple[int, Path]] = []
+    if base.exists():
+        candidates.append((1, base))
+    for path in base.parent.glob(f"{base.name}[0-9]*"):
+        suffix = path.name[len(base.name):]
+        if suffix.isdigit() and int(suffix) >= 2:
+            candidates.append((int(suffix), path))
+    if fresh:
+        number = max((number for number, _ in candidates), default=0) + 1
+        selected["output_root"] = str(base if number == 1 else base.with_name(f"{base.name}{number}"))
+    elif candidates:
+        selected["output_root"] = str(max(candidates, key=lambda item: item[0])[1])
+    return selected

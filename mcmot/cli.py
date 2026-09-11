@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import argparse
 import csv
-import shutil
 from pathlib import Path
 
+import yaml
+
 from .attributes import infer_all
-from .config import ensure_output_dirs, load_config
+from .config import ensure_output_dirs, load_config, select_output_root
 from .global_match import build_global
 from .inventory import build_manifest, write_manifest
 from .report import generate_report
@@ -67,7 +68,9 @@ def run_local(cfg: dict, records: list, resume: bool) -> None:
 def run_all(cfg: dict, deep_inventory: bool, resume: bool, skip_inference: bool,
             skip_video: bool) -> None:
     dirs = ensure_output_dirs(cfg)
-    shutil.copyfile(cfg["config_path"], dirs["root"] / "resolved_config.yaml")
+    resolved = {key: value for key, value in cfg.items() if key != "config_path"}
+    (dirs["root"] / "resolved_config.yaml").write_text(
+        yaml.safe_dump(resolved, allow_unicode=True, sort_keys=False), encoding="utf-8")
     records = inventory(cfg, deep_inventory)
     run_local(cfg, records, resume)
     attrs_path = dirs["attributes/crops"].parent / "inference_results.csv"
@@ -94,17 +97,27 @@ def run_all(cfg: dict, deep_inventory: bool, resume: bool, skip_inference: bool,
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Offline MCMOT analytics")
     parser.add_argument("command", choices=["inventory", "run", "report", "visualize"])
-    parser.add_argument("--config", default="config.yaml")
+    parser.add_argument("--config", default="config.pohang_inside.yaml")
     parser.add_argument("--deep", action="store_true", help="count every CSV row and ffprobe every video")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--skip-inference", action="store_true")
     parser.add_argument("--skip-video", action="store_true")
     args = parser.parse_args(argv)
     cfg = load_config(args.config)
-    if args.command == "inventory": inventory(cfg, args.deep)
-    elif args.command == "run": run_all(cfg, args.deep, args.resume, args.skip_inference, args.skip_video)
-    elif args.command == "report": print(generate_report(Path(cfg["output_root"]), cfg))
-    else: print(generate_video(Path(cfg["output_root"]), cfg))
+    if args.command == "inventory":
+        cfg = select_output_root(cfg, fresh=True)
+        print(f"output: {cfg['output_root']}")
+        inventory(cfg, args.deep)
+    elif args.command == "run":
+        cfg = select_output_root(cfg, fresh=not args.resume)
+        print(f"output: {cfg['output_root']}")
+        run_all(cfg, args.deep, args.resume, args.skip_inference, args.skip_video)
+    elif args.command == "report":
+        cfg = select_output_root(cfg, fresh=False)
+        print(generate_report(Path(cfg["output_root"]), cfg))
+    else:
+        cfg = select_output_root(cfg, fresh=False)
+        print(generate_video(Path(cfg["output_root"]), cfg))
 
 
 if __name__ == "__main__":

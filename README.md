@@ -10,8 +10,8 @@ cross-camera global ID, 시청/주목 시간, 성별/연령, HTML 보고서와 �
 사용합니다.
 
 ```bash
-PYENV_VERSION=tf python -m mcmot.cli inventory --config config.yaml
-PYENV_VERSION=tf python -m mcmot.cli run --config config.yaml
+PYENV_VERSION=tf python -m mcmot.cli inventory --config config.pohang_inside.yaml
+PYENV_VERSION=tf python -m mcmot.cli run --config config.pohang_inside.yaml
 ```
 
 원본 영상 마운트가 접근 가능한지 먼저 확인해야 합니다. 영상이 없거나 마운트가
@@ -22,7 +22,7 @@ PYENV_VERSION=tf python -m mcmot.cli run --config config.yaml
 
 ```bash
 PYENV_VERSION=tf python -m unittest discover -s tests -v
-PYENV_VERSION=tf python -m mcmot.cli inventory --config config.yaml
+PYENV_VERSION=tf python -m mcmot.cli inventory --config config.pohang_inside.yaml
 ```
 
 전체 실행 결과는 기본적으로 `output/` 아래에 저장됩니다. 중간 단계 CSV가
@@ -51,5 +51,9 @@ PYENV_VERSION=tf python -m mcmot.export_html \
   output/report/index.html output/report/index_export.html
 ```
 
-모든 임계값과 외부 경로는 [config.yaml](config.yaml)에 기록되어 있습니다.
+포항 실내 설정은 [config.pohang_inside.yaml](config.pohang_inside.yaml), 포항 실외
+설정은 [config.pohang_outside.yaml](config.pohang_outside.yaml)에 기록되어 있습니다.
+새 `run` 또는 `inventory` 실행 시 설정의 output 경로가 이미 존재하면 `output2`,
+`output3`처럼 번호가 붙은 새 경로를 자동으로 사용합니다. `--resume`, `report`,
+`visualize`는 가장 최근 번호의 output을 선택합니다.
 판정 순서와 누락 처리의 상세 내용은 [docs/design.md](docs/design.md)를 참고하세요.

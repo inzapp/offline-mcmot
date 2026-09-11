@@ -10,7 +10,13 @@ tracking:
   high_confidence: 0.25
   low_confidence: 0.03
   min_confirmed_hits: 2
-  max_missed_seconds: 0.8
+  center_min_confirmed_hits: 10
+  tentative_max_missed_seconds: 0.5
+  max_missed_seconds: 3.0
+  entry_camera_boundary_distance: 0.04
+  entry_bev_boundary_distance: 0.02
+  bev_recovery_gate: 0.025
+  bev_recovery_growth_per_second: 0.012
   iou_gate: 0.05
   mahalanobis_gate: 13.28
   second_pass_iou_gate: 0.1

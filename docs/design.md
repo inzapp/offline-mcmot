@@ -18,6 +18,18 @@ confidence bbox를 대상으로 한다. IoU와 Mahalanobis gating 후 Hungarian
 assignment를 수행한다. 짧은 miss는 예측 상태로 ID를 유지하지만 실제 관측으로
 간주하지 않는다.
 
+검출 단절로 같은 사람에게 새 ID가 발급되는 현상을 줄이기 위해 확정 track은
+최대 3초 동안 Kalman 예측 상태로 유지한다. bbox association이 실패하더라도
+Homography로 독립 계산된 BEV 위치가 예측 위치와 가까우면 기존 track으로
+복구한다. BEV recovery gate는 기본 0.025이며 누락 시간 1초마다 0.012씩
+확장한다. 반대로 미확정 후보는 0.5초만 유지해 오검출이 오래 남지 않게 한다.
+
+새 detection의 bbox bottom-center가 camera ROI 또는 BEV ROI 경계 부근이면 실제
+입장으로 보고 2회 관측 후 확정한다. 양쪽 모두 중앙이면 검출 단절이나 일시적
+오검출일 가능성이 높으므로 10회 관측 후에만 확정하여 노출인구에 포함한다.
+이 지연 확정은 track 자체를 삭제하는 방식이 아니므로 영상 시작 시 이미 ROI
+중앙에 있던 사람이 충분히 지속 관측되면 정상적으로 집계된다.
+
 - `track_span_seconds`: 허용된 짧은 예측 구간을 포함한 노출 시간
 - `observed_seconds`: 실제 detection 기반 시간
 - `predicted_gap_seconds`: Kalman-only 시간
@@ -64,6 +76,5 @@ Global ID에서는 연결된 local crop 중 같은 기준으로 최종 대표 cr
 동시에 존재하는 두 local track이 하나의 global ID가 되는 병합은 금지한다.
 Global 시간 지표는 카메라별 합이 아닌 시간 interval union으로 계산한다.
 
-보고서에는 승인과 거절을 포함한 association 감사 로그, 데이터 누락, topology,
-설정값을 보존한다. 시각화 영상은 score가 가장 좋은 승인 사례를 선택해 crop,
-BEV 연결, embedding 거리와 threshold를 동시에 보여준다.
+원시 CSV에는 association 판단 근거와 데이터 누락을 보존한다. HTML 보고서는
+topology, crop, BEV 연결, embedding 거리와 threshold를 시각 자료로 보여준다.

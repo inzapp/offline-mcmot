@@ -70,6 +70,7 @@ class Track:
     hits: int = 1
     misses: int = 0
     confirmed: bool = False
+    required_hits: int = 2
     observed_seconds: float = 0.0
     predicted_seconds: float = 0.0
     watch_total: float = 0.0
@@ -171,6 +172,7 @@ class PointTrack:
     last_time: datetime
     last_observed: datetime
     hits: int = 1
+    required_hits: int = 2
     predicted_seconds: float = 0.0
     history: list = field(default_factory=list)
 
@@ -184,13 +186,15 @@ def process_bev_only(record, cfg: dict, track_writer, person_writer, issues_writ
     completed: list[PointTrack] = []
     next_id, previous_time = 1, None
     max_gap = float(tc["max_missed_seconds"])
+    tentative_gap = float(tc.get("tentative_max_missed_seconds", .5))
     max_speed = float(cfg["global_matching"]["max_bev_speed_per_second"])
     for when, frame_index, detections in bev_frames(Path(record.bev_path)):
         delta = .1 if previous_time is None else max(.001, (when - previous_time).total_seconds())
         previous_time = when
         survivors = []
         for track in active:
-            if (when - track.last_observed).total_seconds() > max_gap:
+            allowed_gap = max_gap if track.hits >= track.required_hits else tentative_gap
+            if (when - track.last_observed).total_seconds() > allowed_gap:
                 completed.append(track)
             else:
                 survivors.append(track)
@@ -229,7 +233,7 @@ def process_bev_only(record, cfg: dict, track_writer, person_writer, issues_writ
                 track.position += track.velocity * delta
                 track.last_time = when
                 track.predicted_seconds += delta
-                if track.hits >= int(tc["min_confirmed_hits"]):
+                if track.hits >= track.required_hits:
                     track_writer.writerow({"site": record.site, "date": record.date, "recording_id": record.stem,
                         "camera_id": record.camera_id, "timestamp": when.isoformat(sep=" "), "frame_index": frame_index,
                         "local_id": track.local_id, "bev_x": "", "bev_y": "", "inside_bev_roi": "",
@@ -237,8 +241,11 @@ def process_bev_only(record, cfg: dict, track_writer, person_writer, issues_writ
         for di, row in enumerate(valid):
             if di in used_d: continue
             position = np.array([row["bev_x"], row["bev_y"]], dtype=float)
+            boundary_distance = min((distance_to_polygon(position, roi) for roi in bev_rois), default=float("inf"))
+            required_hits = int(tc["min_confirmed_hits"] if boundary_distance <= float(tc.get("entry_bev_boundary_distance", .02))
+                                else tc.get("center_min_confirmed_hits", tc["min_confirmed_hits"]))
             track = PointTrack(next_id, position, np.zeros(2), when, when, when,
-                               history=[(when, *position)])
+                               required_hits=required_hits, history=[(when, *position)])
             next_id += 1; active.append(track)
             track_writer.writerow({"site": record.site, "date": record.date, "recording_id": record.stem,
                 "camera_id": record.camera_id, "timestamp": when.isoformat(sep=" "), "frame_index": frame_index,
@@ -247,7 +254,7 @@ def process_bev_only(record, cfg: dict, track_writer, person_writer, issues_writ
                 "is_observed": 1, "is_predicted": 0, "watch_condition": ""})
     completed.extend(active)
     for track in completed:
-        if track.hits < int(tc["min_confirmed_hits"]): continue
+        if track.hits < track.required_hits: continue
         uid = f"{record.date}:{record.camera_id}:{record.nominal_start}:L{track.local_id}"
         first, last = track.history[0], track.history[-1]
         person_writer.writerow({"local_uid": uid, "date": record.date, "recording_id": record.stem,
@@ -267,8 +274,24 @@ def process_bev_only(record, cfg: dict, track_writer, person_writer, issues_writ
                             "detail": "raw CSV unavailable; watch/attention/crop/attributes remain null"})
 
 
+def predicted_bev(track: Track, when: datetime) -> np.ndarray | None:
+    if not track.bev_history:
+        return None
+    _, x, y = track.bev_history[-1]
+    velocity = np.zeros(2)
+    if len(track.bev_history) >= 2:
+        previous, current = track.bev_history[-2], track.bev_history[-1]
+        seconds = (current[0] - previous[0]).total_seconds()
+        if seconds > 0:
+            velocity = (np.array(current[1:]) - np.array(previous[1:])) / seconds
+    gap = max(0.0, (when - track.last_observed).total_seconds())
+    return np.array([x, y]) + velocity * gap
+
+
 def assignment(tracks: list[Track], detections: list[dict], iou_gate: float,
-               mahal_gate: float) -> tuple[list[tuple[int, int]], list[int], list[int]]:
+               mahal_gate: float, when: datetime | None = None,
+               bev_recovery_gate: float = 0.0,
+               bev_recovery_growth: float = 0.0) -> tuple[list[tuple[int, int]], list[int], list[int]]:
     if not tracks or not detections:
         return [], list(range(len(tracks))), list(range(len(detections)))
     costs = np.full((len(tracks), len(detections)), 1e6, dtype=float)
@@ -280,6 +303,18 @@ def assignment(tracks: list[Track], detections: list[dict], iou_gate: float,
             mahal = track.kf.distance(measurement)
             if overlap >= iou_gate or mahal <= mahal_gate:
                 costs[ti, di] = (1.0 - overlap) + min(mahal / mahal_gate, 1.0) * 0.25
+                continue
+            # A weak detector can return a substantially changed bbox after an
+            # occlusion. Recover only if the independently mapped BEV position
+            # remains physically close to the track prediction.
+            if when is not None and bev_recovery_gate > 0 and track.confirmed:
+                expected = predicted_bev(track, when)
+                if expected is not None and det.get("bev_x") not in (None, ""):
+                    distance = float(np.linalg.norm(expected - [float(det["bev_x"]), float(det["bev_y"])]))
+                    gap = max(0.0, (when - track.last_observed).total_seconds())
+                    gate = bev_recovery_gate + bev_recovery_growth * gap
+                    if distance <= gate:
+                        costs[ti, di] = 1.25 + distance / max(gate, 1e-9) * 0.5
     rows, cols = linear_sum_assignment(costs)
     matches = [(int(r), int(c)) for r, c in zip(rows, cols) if costs[r, c] < 1e5]
     used_t, used_d = {x for x, _ in matches}, {x for _, x in matches}
@@ -331,6 +366,9 @@ def process_recording(record, cfg: dict, track_writer, person_writer, segment_wr
     previous_time = None
     reader = VideoCropReader(record.video_path)
 
+    def max_track_gap(track: Track) -> float:
+        return float(tc["max_missed_seconds"] if track.confirmed else tc.get("tentative_max_missed_seconds", .5))
+
     def finish(track: Track):
         track.finish_watch()
         completed.append(track)
@@ -356,7 +394,7 @@ def process_recording(record, cfg: dict, track_writer, person_writer, segment_wr
         previous_time = when
         still_active = []
         for track in active:
-            if (when - track.last_observed).total_seconds() > float(tc["max_missed_seconds"]):
+            if (when - track.last_observed).total_seconds() > max_track_gap(track):
                 finish(track)
             else:
                 still_active.append(track)
@@ -373,11 +411,13 @@ def process_recording(record, cfg: dict, track_writer, person_writer, segment_wr
                 valid.append(row)
         high = [r for r in valid if float(r["confidence"]) >= float(tc["high_confidence"])]
         low = [r for r in valid if float(r["confidence"]) < float(tc["high_confidence"])]
-        matches, unmatched_t, unmatched_d = assignment(active, high, float(tc["iou_gate"]),
-                                                        float(tc["mahalanobis_gate"]))
+        matches, unmatched_t, unmatched_d = assignment(
+            active, high, float(tc["iou_gate"]), float(tc["mahalanobis_gate"]), when,
+            float(tc.get("bev_recovery_gate", 0)), float(tc.get("bev_recovery_growth_per_second", 0)))
         second_tracks = [active[i] for i in unmatched_t]
-        matches2, unmatched_t2, _ = assignment(second_tracks, low, float(tc["second_pass_iou_gate"]),
-                                                float(tc["mahalanobis_gate"]))
+        matches2, unmatched_t2, _ = assignment(
+            second_tracks, low, float(tc["second_pass_iou_gate"]), float(tc["mahalanobis_gate"]), when,
+            float(tc.get("bev_recovery_gate", 0)), float(tc.get("bev_recovery_growth_per_second", 0)))
         combined = [(ti, high[di]) for ti, di in matches]
         combined += [(unmatched_t[ti], low[di]) for ti, di in matches2]
         matched_indices = set()
@@ -392,7 +432,7 @@ def process_recording(record, cfg: dict, track_writer, person_writer, segment_wr
             track.last_time = track.last_observed = when
             track.hits += 1
             track.misses = 0
-            track.confirmed = track.confirmed or track.hits >= int(tc["min_confirmed_hits"])
+            track.confirmed = track.confirmed or track.hits >= track.required_hits
             track.detection_count += 1
             watching = bool(row["watch_condition"])
             track.apply_watch(when, watching, wc)
@@ -429,7 +469,7 @@ def process_recording(record, cfg: dict, track_writer, person_writer, segment_wr
             track.misses += 1
             gap = (when - track.last_observed).total_seconds()
             track.apply_watch(when, False, wc)
-            if gap <= float(tc["max_missed_seconds"]):
+            if gap <= max_track_gap(track):
                 track.predicted_seconds += dt
                 track.last_time = when
                 if track.confirmed:
@@ -441,8 +481,16 @@ def process_recording(record, cfg: dict, track_writer, person_writer, segment_wr
         for di in unmatched_d:
             row = high[di]
             measurement = np.array([float(row[k]) for k in ("cx", "cy", "w", "h")])
+            camera_point = (float(row["cx"]), float(row["cy"]) + float(row["h"]) / 2)
+            bev_point = (float(row["bev_x"]), float(row["bev_y"]))
+            camera_boundary = min((distance_to_polygon(camera_point, roi) for roi in camera_rois), default=float("inf"))
+            bev_boundary = min((distance_to_polygon(bev_point, roi) for roi in bev_rois), default=float("inf"))
+            enters_at_boundary = (camera_boundary <= float(tc.get("entry_camera_boundary_distance", .04)) or
+                                  bev_boundary <= float(tc.get("entry_bev_boundary_distance", .02)))
+            required_hits = int(tc["min_confirmed_hits"] if enters_at_boundary
+                                else tc.get("center_min_confirmed_hits", tc["min_confirmed_hits"]))
             track = Track(next_id, BBoxKalman(measurement, tc["process_noise"], tc["measurement_noise"]),
-                          when, when, when)
+                          when, when, when, required_hits=required_hits)
             next_id += 1
             track.detection_count = 1
             track.apply_watch(when, bool(row["watch_condition"]), wc)
