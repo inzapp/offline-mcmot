@@ -5,6 +5,7 @@ import html
 from collections import Counter
 from pathlib import Path
 
+from .export_html import export_standalone_html
 from .report_visuals import generate_report_assets
 
 
@@ -148,4 +149,5 @@ h2{{margin:0 0 15px}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,
     target = output_root / "report/index.html"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
+    export_standalone_html(target, target.with_name("index_export.html"))
     return target

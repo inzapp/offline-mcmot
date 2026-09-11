@@ -6,10 +6,25 @@ from pathlib import Path
 
 import numpy as np
 
+from mcmot.export_html import export_standalone_html
 from mcmot.geometry import bbox_xyxy, distance_to_polygon, iou, is_watch, point_in_polygon
 from mcmot.global_match import union_duration
 from mcmot.global_match import build_global
 from mcmot.tracker import BBoxKalman, Track, paired_frames
+
+
+class ExportHtmlTest(unittest.TestCase):
+    def test_embeds_local_assets_and_keeps_external_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pixel.png").write_bytes(b"\x89PNG\r\n")
+            source = root / "index.html"
+            target = root / "index_export.html"
+            source.write_text('<img src="pixel.png"><a href="https://example.com">external</a>', encoding="utf-8")
+            export_standalone_html(source, target)
+            exported = target.read_text(encoding="utf-8")
+            self.assertIn('src="data:image/png;base64,', exported)
+            self.assertIn('href="https://example.com"', exported)
 
 
 class GeometryTest(unittest.TestCase):

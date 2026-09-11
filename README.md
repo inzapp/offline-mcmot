@@ -41,7 +41,15 @@ PYENV_VERSION=tf python -m mcmot.cli inventory --config config.yaml
 - `attributes/inference_results.csv`: 성별/연령 모델 원시 출력
 - `quality/issues.csv`: 처리 중 발견된 결손과 예외
 - `report/index.html`: 상세 고객/검증 보고서
+- `report/index_export.html`: 이미지 asset이 내장되어 단독 전송 가능한 보고서
 - `visualization/best_matches.mp4`: 우수 cross-camera 매칭 사례 영상
+
+기존 보고서를 단일 파일로 다시 export할 수도 있습니다.
+
+```bash
+PYENV_VERSION=tf python -m mcmot.export_html \
+  output/report/index.html output/report/index_export.html
+```
 
 모든 임계값과 외부 경로는 [config.yaml](config.yaml)에 기록되어 있습니다.
 판정 순서와 누락 처리의 상세 내용은 [docs/design.md](docs/design.md)를 참고하세요.
