@@ -12,7 +12,9 @@ import cv2
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from .geometry import bbox_xyxy, distance_to_polygon, iou, is_watch, point_in_polygon
+from .geometry import (bbox_xyxy, distance_to_polygon, gaze_ray,
+                       homography_from_points, iou, is_watch, point_in_polygon,
+                       segment_intersects_polygon, transform_point)
 
 
 TRACK_FIELDS = [
@@ -20,6 +22,9 @@ TRACK_FIELDS = [
     "detection_index", "local_id", "confidence", "cx", "cy", "w", "h",
     "bev_x", "bev_y", "inside_camera_roi", "inside_bev_roi", "is_observed",
     "is_predicted", "watch_condition",
+    "gaze_valid", "gaze_camera_start_x", "gaze_camera_start_y",
+    "gaze_camera_end_x", "gaze_camera_end_y", "gaze_bev_start_x",
+    "gaze_bev_start_y", "gaze_bev_end_x", "gaze_bev_end_y", "gaze_target",
 ]
 
 
@@ -119,6 +124,42 @@ def load_roi(path: Path) -> tuple[list, list]:
         camera.append(roi.get("image2_vertices_normalized", []))
         bev.append(roi.get("image1_vertices_normalized", []))
     return camera, bev
+
+
+def load_camera_to_bev(path: Path) -> np.ndarray:
+    with path.open(encoding="utf-8") as stream:
+        data = json.load(stream)
+    sources, targets = [], []
+    for roi in data.get("rois", []):
+        sources.extend(roi.get("image2_vertices_normalized", []))
+        targets.extend(roi.get("image1_vertices_normalized", []))
+    if len(sources) < 4 or len(sources) != len(targets):
+        raise ValueError(f"insufficient camera/BEV calibration points: {path}")
+    return homography_from_points(sources, targets)
+
+
+def add_gaze_fields(row: dict, camera_to_bev: np.ndarray, cfg: dict) -> None:
+    ray = gaze_ray(row, float(cfg.get("keypoint_confidence", .3)))
+    row.update({"gaze_valid": False, "gaze_target": ""})
+    if ray is None:
+        return
+    camera_start, camera_end = ray
+    try:
+        bev_start = transform_point(camera_start, camera_to_bev)
+        bev_end = transform_point(camera_end, camera_to_bev)
+    except ValueError:
+        return
+    row.update({"gaze_valid": True,
+        "gaze_camera_start_x": camera_start[0], "gaze_camera_start_y": camera_start[1],
+        "gaze_camera_end_x": camera_end[0], "gaze_camera_end_y": camera_end[1],
+        "gaze_bev_start_x": bev_start[0], "gaze_bev_start_y": bev_start[1],
+        "gaze_bev_end_x": bev_end[0], "gaze_bev_end_y": bev_end[1]})
+    person = (float(row["bev_x"]), float(row["bev_y"]))
+    for target in cfg.get("targets", []):
+        if (point_in_polygon(person, target["source_polygon"]) and
+                segment_intersects_polygon(bev_start, bev_end, target["target_polygon"])):
+            row["gaze_target"] = target["name"]
+            break
 
 
 def paired_frames(raw_path: Path, bev_path: Path) -> Iterator[tuple[datetime, int, list[dict]]]:
@@ -357,8 +398,9 @@ def process_recording(record, cfg: dict, track_writer, person_writer, segment_wr
         issues_writer.writerow({"scope": record.stem, "severity": "warning",
                                 "code": "tracking_input_missing", "detail": record.status})
         return
-    camera_rois, bev_rois = load_roi(Path(cfg["data_root"]) / cfg["site"] /
-                                     record.camera_id / f"{record.camera_id}_roi.json")
+    roi_path = Path(cfg["data_root"]) / cfg["site"] / record.camera_id / f"{record.camera_id}_roi.json"
+    camera_rois, bev_rois = load_roi(roi_path)
+    camera_to_bev = load_camera_to_bev(roi_path)
     tc, wc, cc = cfg["tracking"], cfg["watch"], cfg["crop"]
     active: list[Track] = []
     completed: list[Track] = []
@@ -387,6 +429,9 @@ def process_recording(record, cfg: dict, track_writer, person_writer, segment_wr
                        "inside_bev_roi": row.get("inside_bev_roi", ""),
                        "is_observed": int(observed), "is_predicted": int(predicted),
                        "watch_condition": row.get("watch_condition", "")})
+        for key in TRACK_FIELDS:
+            if key.startswith("gaze_"):
+                output[key] = row.get(key, "")
         track_writer.writerow(output)
 
     for when, frame_index, rows in paired_frames(Path(record.raw_path), Path(record.bev_path)):
@@ -408,6 +453,7 @@ def process_recording(record, cfg: dict, track_writer, person_writer, segment_wr
             row["inside_bev_roi"] = any(point_in_polygon((row["bev_x"], row["bev_y"]), roi) for roi in bev_rois)
             if row["inside_camera_roi"] and row["inside_bev_roi"] and float(row["confidence"]) >= float(tc["low_confidence"]):
                 row["watch_condition"] = is_watch(row, wc)
+                add_gaze_fields(row, camera_to_bev, cfg.get("spatial", {}).get("gaze", {}))
                 valid.append(row)
         high = [r for r in valid if float(r["confidence"]) >= float(tc["high_confidence"])]
         low = [r for r in valid if float(r["confidence"]) < float(tc["high_confidence"])]

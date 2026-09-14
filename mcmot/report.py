@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .export_html import export_standalone_html
 from .report_visuals import generate_report_assets
+from .spatial import spatial_map_asset
 
 
 def rows(path: Path) -> list[dict]:
@@ -106,6 +107,8 @@ def generate_report(output_root: Path, cfg: dict) -> Path:
     camera_rows = []
     mappings = rows(output_root / "global/id_mapping.csv")
     visuals = generate_report_assets(output_root, cfg, topology, associations, local, mappings)
+    spatial_image, spatial_legend = spatial_map_asset(output_root, cfg)
+    spatial_summary = rows(output_root / "spatial/demographics_summary.csv")
     explainer = visuals.get("global_id_explainer", {})
     for camera in sorted({row.get("camera_id", "") for row in local}):
         camera_local = [row for row in local if row.get("camera_id") == camera]
@@ -135,6 +138,7 @@ h2{{margin:0 0 15px}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,
 .decision-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}}.decision-grid>div{{display:flex;flex-direction:column;gap:7px;padding:17px;border:1px solid var(--line);border-radius:12px;background:#f8fafb}}.decision-grid b{{color:var(--blue);font-size:17px}}.decision-grid span{{color:var(--muted);line-height:1.55}}.decision-grid .pass{{background:#eaf8f1;border-color:#91d6b7}}.decision-grid .pass b{{color:var(--green)}}.gallery.reid-grid{{grid-template-columns:repeat(4,minmax(0,1fr))}}.gallery.reid-grid figure img{{height:245px}}@media(max-width:1050px){{.gallery.reid-grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}}}@media(max-width:600px){{.gallery.reid-grid{{grid-template-columns:1fr}}}}
 </style></head><body><header><h1>Offline MCMOT 분석 보고서</h1><p>{html.escape(cfg['site'])} · {', '.join(dates)}. Local MOT, BEV topology, 이동 가능성, ReID embedding을 함께 사용한 결과입니다. 누락된 입력에서 값은 생성하지 않았습니다.</p></header><main>
 <div class="cards">{card_html}</div>
+<section><h2>동선·공간·시선 구역</h2><p class="note">운영보고서의 빨간 화살표를 global map 정규화 좌표의 gate/polygon으로 옮긴 근사 판정 설정입니다. 번호별 산정 기준은 아래 표와 같습니다.</p>{f'<a href="{spatial_image}"><img class="wide" loading="lazy" src="{spatial_image}"></a>' if spatial_image else '<div class="empty">공간 설정 없음</div>'}{table(spatial_legend, list(spatial_legend[0]) if spatial_legend else [])}<h3>동선·공간·시선별 성별/연령 집계</h3>{table(spatial_summary, ['date','hour','dimension','name','gender','age','person_count'], 1000)}</section>
 <section><h2>일별 핵심 지표</h2><p class="note">노출인구(local)는 각 카메라에서 발견한 ID의 합계이며, 노출인구(global)는 같은 사람으로 승인된 ID를 묶은 결과입니다. 시청률과 주목률의 분모는 노출인구(global)입니다.</p>{table(daily, list(daily[0]) if daily else [])}</section>
 <section><h2>연령대 분포</h2><p class="note">Global ID마다 최종 선정된 대표 crop 1장을 연령 모델로 추론한 결과입니다. 판별 가능 인구는 <b>{known_age_count:,}명</b>으로 전체 노출인구(global)의 <b>{known_age_count / global_count * 100 if global_count else 0:.1f}%</b>입니다. 연령대 비율은 판별 가능한 인구를 분모로 계산하고, <code>unknown</code>만 전체 인구 대비로 표시합니다.</p>{age_bars}<h3>날짜별 연령대 인구</h3>{table(daily_age, list(daily_age[0]) if daily_age else [])}</section>
 <section><h2>Global ID는 어떻게 만들어지는가</h2><p class="note">아래 흐름도는 설명용 가상 예시가 아니라, 실제 승인된 카메라 간 매칭 1건의 crop·BEV 좌표·판정값을 사용합니다. 왼쪽의 서로 다른 두 Local ID가 모든 검사를 통과하면 오른쪽의 하나의 Global ID가 됩니다.</p><div class="steps"><div class="step"><b>카메라 안에서 추적</b><br>ROI 안의 사람만 추적하고 짧은 검출 누락은 Kalman 예측으로 보완합니다.</div><div class="step"><b>공간·시간 후보 선별</b><br>BEV 위치가 겹치거나, ROI 경계에서 사라진 뒤 이동 가능한 시간 안에 나타난 경우만 비교합니다.</div><div class="step"><b>외형 비교(ReID)</b><br>두 대표 crop의 embedding L2 거리가 기준보다 가까운지 확인합니다.</div><div class="step"><b>Global ID 병합</b><br>공간·시간 gate와 ReID 기준을 모두 통과한 연결만 같은 사람으로 묶습니다.</div></div>{f'<a href="{explainer["src"]}"><img class="wide" loading="lazy" src="{explainer["src"]}"></a>' if explainer else '<div class="empty">승인 사례가 없어 흐름도를 만들 수 없습니다.</div>'}<h3>일반적인 판정 기준</h3><div class="decision-grid"><div><b>① 비교 대상인가?</b><span>서로 다른 카메라이고 같은 날짜·30분 세션이어야 합니다.</span></div><div><b>② 이동 가능한가?</b><span>동시 관측은 BEV 거리 0.055 이하, handoff는 최대 8초와 최대 속도 조건을 확인합니다.</span></div><div><b>③ 화면 경계인가?</b><span>handoff라면 출발 소실점과 도착 진입점이 각각 카메라 하위 15% 경계 범위여야 합니다.</span></div><div><b>④ 외형이 같은가?</b><span>ReID L2 거리가 {float(cfg['reid']['distance_threshold']):.4f}보다 작아야 합니다.</span></div><div><b>⑤ 모순이 없는가?</b><span>병합 결과에 같은 카메라·같은 시간의 두 사람이 생기면 거부합니다.</span></div><div class="pass"><b>✓ Global ID 병합</b><span>앞선 조건을 모두 통과한 연결을 낮은 종합점수 순으로 하나의 ID로 묶습니다.</span></div></div><p class="note warn"><b>Topology 해석:</b> 현재 topology는 승인된 handoff를 방향별로 집계한 결과입니다. 같은 방향이 최소 {cfg['global_matching']['min_topology_observations']}회 나타나면 confirmed로 표시되며, 사전에 정해진 카메라 연결표로 후보를 제한하는 방식은 아닙니다.</p></section>

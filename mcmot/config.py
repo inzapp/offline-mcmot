@@ -22,7 +22,7 @@ def load_config(path: str | Path) -> dict[str, Any]:
 
 def ensure_output_dirs(cfg: dict[str, Any]) -> dict[str, Path]:
     root = Path(cfg["output_root"])
-    names = ["manifest", "local", "global", "attributes/crops", "quality",
+    names = ["manifest", "local", "global", "spatial", "attributes/crops", "quality",
              "report/assets", "visualization"]
     result = {"root": root}
     for name in names:

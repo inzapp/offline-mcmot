@@ -37,12 +37,18 @@ PYENV_VERSION=tf python -m mcmot.cli inventory --config config.pohang_inside.yam
 - `global/id_mapping.csv`: local ID와 global ID 관계
 - `global/tracks.csv`: frame별 local/global ID를 함께 담은 join-ready 결과
 - `global/persons.csv`: 카메라 중복 제거 결과
+- `spatial/person_events.csv`: global ID별 동선·공간·OOI 시선 판정 결과
+- `spatial/demographics_summary.csv`: 날짜·1시간·동선/공간/시선·성별·연령별 인원
 - `global/association_events.csv`: 위치·시간·ReID 판단 근거
 - `attributes/inference_results.csv`: 성별/연령 모델 원시 출력
 - `quality/issues.csv`: 처리 중 발견된 결손과 예외
 - `report/index.html`: 상세 고객/검증 보고서
 - `report/index_export.html`: 이미지 asset이 내장되어 단독 전송 가능한 보고서
 - `visualization/best_matches.mp4`: 우수 cross-camera 매칭 사례 영상
+
+GAMFF 동선 gate와 실외 우드부스 OOI polygon은 사이트별 YAML의 `spatial`에
+BEV 정규화 좌표로 정의되어 있습니다. OOI 시선 ray가 추가된 결과를 만들려면
+기존 `--resume` 결과가 아니라 새 `run`이 필요합니다.
 
 기존 보고서를 단일 파일로 다시 export할 수도 있습니다.
 

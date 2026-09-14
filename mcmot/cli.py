@@ -11,6 +11,7 @@ from .config import ensure_output_dirs, load_config, select_output_root
 from .global_match import build_global
 from .inventory import build_manifest, write_manifest
 from .report import generate_report
+from .spatial import build_spatial
 from .tracker import TRACK_FIELDS, process_recording
 from .visualize import generate_video
 
@@ -85,6 +86,8 @@ def run_all(cfg: dict, deep_inventory: bool, resume: bool, skip_inference: bool,
     print("global: association", flush=True)
     build_global(dirs["local"] / "persons.csv", dirs["local"] / "tracks.csv", attrs_path,
                  dirs["global"], cfg)
+    print("spatial: route/region/OOI aggregation", flush=True)
+    build_spatial(dirs["root"], cfg)
     for path in dirs["global"].glob("*.csv"):
         maybe_parquet(path)
     if not skip_video:

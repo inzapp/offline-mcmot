@@ -8,7 +8,10 @@ import numpy as np
 
 from mcmot.export_html import export_standalone_html
 from mcmot.config import select_output_root
-from mcmot.geometry import bbox_xyxy, distance_to_polygon, iou, is_watch, point_in_polygon
+from mcmot.geometry import (bbox_xyxy, distance_to_polygon, gaze_ray,
+                            homography_from_points, iou, is_watch,
+                            point_in_polygon, segment_intersects_polygon,
+                            transform_point)
 from mcmot.global_match import union_duration
 from mcmot.global_match import build_global
 from mcmot.tracker import BBoxKalman, Track, assignment, paired_frames
@@ -64,6 +67,24 @@ class GeometryTest(unittest.TestCase):
         cfg = {"keypoint_confidence": .05, "normal_angle_deg": 75, "small_bbox_width": .08,
                "small_angle_deg": 55}
         self.assertTrue(is_watch(row, cfg))
+
+    def test_adddi_ooi_gaze_ray_prefers_nose_from_ear_midpoint(self):
+        row = {"left_ear_conf": 1, "right_ear_conf": 1, "left_eye_conf": 1,
+               "right_eye_conf": 1, "nose_conf": 1, "left_ear_x": .4,
+               "left_ear_y": .5, "right_ear_x": .6, "right_ear_y": .5,
+               "nose_x": .5, "nose_y": .4}
+        start, end = gaze_ray(row)
+        np.testing.assert_allclose(start, [.5, .4])
+        np.testing.assert_allclose(end, [.5, 0])
+
+    def test_homography_and_ooi_polygon_hit(self):
+        square = [[0, 0], [1, 0], [1, 1], [0, 1]]
+        matrix = homography_from_points(square, square)
+        np.testing.assert_allclose(transform_point((.2, .3), matrix), (.2, .3), atol=1e-8)
+        self.assertTrue(segment_intersects_polygon((.2, .5), (1, .5),
+                                                   [[.7, .4], [.9, .4], [.9, .6], [.7, .6]]))
+        self.assertFalse(segment_intersects_polygon((.2, .2), (.4, .2),
+                                                    [[.7, .4], [.9, .4], [.9, .6], [.7, .6]]))
 
 
 class TimeTest(unittest.TestCase):

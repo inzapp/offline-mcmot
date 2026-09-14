@@ -30,6 +30,31 @@ watch:
   watch_threshold_seconds: 1.0
   attention_threshold_seconds: 3.0
 
+# GAMFF 운영보고서 4번 슬라이드의 빨간 화살표를 BEV 정규화 좌표로 옮긴
+# 근사 판정 구역이다. routes는 양 끝 gate를 모두 통과한 global track을 집계한다.
+spatial:
+  routes:
+    - name: "전시장·화장실·카페 이동동선"
+      bidirectional: true
+      start_gate: [[0.25, 0.13], [0.43, 0.13], [0.43, 0.31], [0.25, 0.31]]
+      end_gate: [[0.34, 0.40], [0.44, 0.40], [0.44, 0.58], [0.34, 0.58]]
+    - name: "소공연장 이용동선"
+      bidirectional: true
+      start_gate: [[0.25, 0.84], [0.44, 0.84], [0.44, 1.00], [0.25, 1.00]]
+      end_gate: [[0.34, 0.62], [0.44, 0.62], [0.44, 0.80], [0.34, 0.80]]
+    - name: "대공연장 이동동선 1"
+      bidirectional: true
+      start_gate: [[0.76, 0.12], [0.92, 0.12], [0.92, 0.31], [0.76, 0.31]]
+      end_gate: [[0.68, 0.37], [0.84, 0.37], [0.84, 0.55], [0.68, 0.55]]
+    - name: "대공연장 이동동선 2"
+      bidirectional: true
+      start_gate: [[0.76, 0.85], [0.92, 0.85], [0.92, 1.00], [0.76, 1.00]]
+      end_gate: [[0.68, 0.62], [0.84, 0.62], [0.84, 0.80], [0.68, 0.80]]
+  regions: []
+  gaze:
+    keypoint_confidence: 0.3
+    targets: []
+
 crop:
   min_width_px: 2
   min_height_px: 2
