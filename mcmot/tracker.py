@@ -116,9 +116,26 @@ class Track:
         self.watch_start = self.watch_last = None
 
 
-def load_roi(path: Path) -> tuple[list, list]:
+def _roi_payload(path: Path, camera_id: str | None = None) -> dict:
     with path.open(encoding="utf-8") as stream:
         data = json.load(stream)
+    if camera_id is not None and not data.get("rois"):
+        try:
+            data = {"rois": [data[camera_id]]}
+        except KeyError as exc:
+            raise ValueError(f"camera {camera_id} missing from ROI file: {path}") from exc
+    return data
+
+
+def roi_path_and_camera(cfg: dict, camera_id: str) -> tuple[Path, str | None]:
+    if cfg.get("roi_file"):
+        return Path(cfg["roi_file"]), camera_id
+    return (Path(cfg["data_root"]) / cfg["site"] / camera_id /
+            f"{camera_id}_roi.json"), None
+
+
+def load_roi(path: Path, camera_id: str | None = None) -> tuple[list, list]:
+    data = _roi_payload(path, camera_id)
     camera, bev = [], []
     for roi in data.get("rois", []):
         camera.append(roi.get("image2_vertices_normalized", []))
@@ -126,9 +143,8 @@ def load_roi(path: Path) -> tuple[list, list]:
     return camera, bev
 
 
-def load_camera_to_bev(path: Path) -> np.ndarray:
-    with path.open(encoding="utf-8") as stream:
-        data = json.load(stream)
+def load_camera_to_bev(path: Path, camera_id: str | None = None) -> np.ndarray:
+    data = _roi_payload(path, camera_id)
     sources, targets = [], []
     for roi in data.get("rois", []):
         sources.extend(roi.get("image2_vertices_normalized", []))
@@ -220,8 +236,8 @@ class PointTrack:
 
 def process_bev_only(record, cfg: dict, track_writer, person_writer, issues_writer) -> None:
     """Use otherwise stranded BEV data without inventing bbox/pose/attributes."""
-    _, bev_rois = load_roi(Path(cfg["data_root"]) / cfg["site"] / record.camera_id /
-                           f"{record.camera_id}_roi.json")
+    roi_path, roi_camera = roi_path_and_camera(cfg, record.camera_id)
+    _, bev_rois = load_roi(roi_path, roi_camera)
     tc = cfg["tracking"]
     active: list[PointTrack] = []
     completed: list[PointTrack] = []
@@ -398,9 +414,9 @@ def process_recording(record, cfg: dict, track_writer, person_writer, segment_wr
         issues_writer.writerow({"scope": record.stem, "severity": "warning",
                                 "code": "tracking_input_missing", "detail": record.status})
         return
-    roi_path = Path(cfg["data_root"]) / cfg["site"] / record.camera_id / f"{record.camera_id}_roi.json"
-    camera_rois, bev_rois = load_roi(roi_path)
-    camera_to_bev = load_camera_to_bev(roi_path)
+    roi_path, roi_camera = roi_path_and_camera(cfg, record.camera_id)
+    camera_rois, bev_rois = load_roi(roi_path, roi_camera)
+    camera_to_bev = load_camera_to_bev(roi_path, roi_camera)
     tc, wc, cc = cfg["tracking"], cfg["watch"], cfg["crop"]
     active: list[Track] = []
     completed: list[Track] = []

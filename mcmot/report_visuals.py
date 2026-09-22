@@ -32,6 +32,10 @@ def _label(image: np.ndarray, text: str, at: tuple[int, int], scale=.65) -> None
 
 def _roi_specs(cfg: dict) -> dict[str, dict]:
     root = Path(cfg["data_root"]) / cfg["site"]
+    if cfg.get("roi_file"):
+        payload = json.loads(Path(cfg["roi_file"]).read_text(encoding="utf-8"))
+        return {str(camera): spec for camera, spec in payload.items()
+                if (root / str(camera)).is_dir()}
     specs = {}
     for path in sorted(root.glob("*/*_roi.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))

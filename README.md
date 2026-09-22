@@ -57,6 +57,18 @@ PYENV_VERSION=tf python -m mcmot.export_html \
   output/report/index.html output/report/index_export.html
 ```
 
+`attributes/statistics`에 별도로 저장된 새 성별·연령 스냅샷 집계를 기존 보고서와
+분리된 이름으로 반영할 수도 있습니다. `--standalone-name` 파일은 이미지가 내장되어
+단독으로 열 수 있습니다.
+
+```bash
+PYENV_VERSION=tf python -m mcmot.cli report \
+  --config config.pohang_inside.yaml \
+  --report-name index_statistics.html \
+  --standalone-name pohang_inside3_statistics.html \
+  --use-statistics
+```
+
 포항 실내 설정은 [config.pohang_inside.yaml](config.pohang_inside.yaml), 포항 실외
 설정은 [config.pohang_outside.yaml](config.pohang_outside.yaml)에 기록되어 있습니다.
 새 `run` 또는 `inventory` 실행 시 설정의 output 경로가 이미 존재하면 `output2`,

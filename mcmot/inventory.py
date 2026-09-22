@@ -82,12 +82,20 @@ def build_manifest(cfg: dict, deep: bool = False) -> list[Recording]:
     cameras = sorted(path.name for path in data_site.iterdir() if path.is_dir())
     for camera in cameras:
         for kind in ("raw", "bev"):
-            for path in safe_glob(data_site / camera / kind, "*/*.csv"):
+            # The original Pohang export separates raw/ and bev/.  Gumi keeps
+            # both CSVs beside the video in camera/date directories.
+            paths = safe_glob(data_site / camera / kind, "*/*.csv")
+            if not (data_site / camera / kind).is_dir():
+                pattern = "*/*_bev.csv" if kind == "bev" else "*/*.csv"
+                paths = (path for path in safe_glob(data_site / camera, pattern)
+                         if kind == "bev" or not path.name.endswith("_bev.csv"))
+            for path in paths:
                 date, mac, start = parse_stem(path.stem)
+                recording_stem = path.stem[:-4] if kind == "bev" and path.stem.endswith("_bev") else path.stem
                 if date not in dates:
                     continue
-                key = (camera, path.stem)
-                rec = records.setdefault(key, Recording(site, camera, date, path.stem, mac, start))
+                key = (camera, recording_stem)
+                rec = records.setdefault(key, Recording(site, camera, date, recording_stem, mac, start))
                 setattr(rec, f"{kind}_path", str(path.resolve()))
                 setattr(rec, f"{kind}_bytes", path.stat().st_size)
         for date in dates:

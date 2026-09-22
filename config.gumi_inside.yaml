@@ -1,0 +1,92 @@
+site: gumi_inside
+dates: ["2026-09-03", "2026-09-04", "2026-09-05"]
+data_root: /home/inzapp/mnt/olim/data/gumi
+video_root: /home/inzapp/mnt/olim/data/gumi/gumi_inside
+output_root: output_gumi_inside
+bev_image: /home/inzapp/mnt/olim/data/gumi/gumi_inside/bev.png
+roi_file: /home/inzapp/mnt/olim/data/gumi/Gumi_ROI.json
+
+tracking:
+  high_confidence: 0.25
+  low_confidence: 0.03
+  min_confirmed_hits: 2
+  center_min_confirmed_hits: 10
+  tentative_max_missed_seconds: 0.5
+  max_missed_seconds: 3.0
+  entry_camera_boundary_distance: 0.04
+  entry_bev_boundary_distance: 0.02
+  bev_recovery_gate: 0.025
+  bev_recovery_growth_per_second: 0.012
+  iou_gate: 0.05
+  mahalanobis_gate: 13.28
+  second_pass_iou_gate: 0.10
+  process_noise: 1.0
+  measurement_noise: 4.0
+
+watch:
+  keypoint_confidence: 0.05
+  normal_angle_deg: 75.0
+  small_bbox_width: 0.08
+  small_angle_deg: 55.0
+  watch_threshold_seconds: 1.0
+  attention_threshold_seconds: 3.0
+
+# 구역분할 PDF 1쪽의 노란 화살표와 동일한 BEV 정규화 좌표.
+spatial:
+  routes:
+    - name: "관람공간 동선"
+      bidirectional: false
+      start_gate: [[0.59, 0.44], [0.67, 0.44], [0.67, 0.59], [0.59, 0.59]]
+      end_gate: [[0.36, 0.44], [0.44, 0.44], [0.44, 0.59], [0.36, 0.59]]
+  regions:
+    - name: "관람공간"
+      polygon: [[0.36, 0.43], [0.66, 0.43], [0.66, 0.59], [0.36, 0.59]]
+    - name: "좌측 부스"
+      polygon: [[0.24, 0.43], [0.36, 0.43], [0.36, 0.59], [0.24, 0.59]]
+    - name: "우측 부스"
+      polygon: [[0.66, 0.43], [0.75, 0.43], [0.75, 0.59], [0.66, 0.59]]
+  gaze:
+    keypoint_confidence: 0.3
+    targets:
+      - name: "관람공간→좌측 부스 시선"
+        source_polygon: [[0.44, 0.43], [0.66, 0.43], [0.66, 0.59], [0.44, 0.59]]
+        target_polygon: [[0.24, 0.43], [0.36, 0.43], [0.36, 0.59], [0.24, 0.59]]
+
+crop:
+  min_width_px: 2
+  min_height_px: 2
+  update_every_detections: 3
+  required_growth_ratio: 1.05
+
+attributes:
+  gender_model: /home/inzapp/adddi_light/app_main/model/onnx/mGtEx-sba-001.onnx
+  age_model: /home/inzapp/adddi_light/app_main/model/onnx/5age_cls_128x64_simclf.onnx
+  gender_threshold: 0.42
+  age_labels: ["0-14", "14-20", "20-50", "50+", "unknown"]
+
+reid:
+  repository: /home/inzapp/inz/git/reid
+  config: /home/inzapp/inz/git/reid/checkpoint/reid_284/cfg.yaml
+  model: /home/inzapp/inz/git/reid/checkpoint/reid_284/best_30000_iter_rank1_0.7643.h5
+  distance_threshold: 0.9358518719673157
+  diagnostic_eer_threshold: 1.0774096250534058
+  batch_size: 32
+
+global_matching:
+  sync_tolerance_seconds: 0.20
+  simultaneous_bev_distance: 0.055
+  max_handoff_seconds: 8.0
+  max_bev_speed_per_second: 0.20
+  boundary_quantile: 0.15
+  min_topology_observations: 2
+  weights: {reid: 0.55, bev: 0.30, time: 0.15}
+
+visualization:
+  enabled: true
+  excluded_reid_report_global_ids: []
+  reid_report_pairs: []
+  max_cases: 5
+  seconds_per_case: 6
+  fps: 10
+  width: 1280
+  height: 720

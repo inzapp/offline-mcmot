@@ -11,7 +11,9 @@ def load_config(path: str | Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as stream:
         cfg = yaml.safe_load(stream) or {}
     base = path.parent
-    for key in ("data_root", "output_root", "bev_image"):
+    for key in ("data_root", "output_root", "bev_image", "roi_file"):
+        if key not in cfg:
+            continue
         value = Path(cfg[key])
         if not value.is_absolute():
             cfg[key] = str((base / value).resolve())

@@ -14,7 +14,9 @@ from mcmot.geometry import (bbox_xyxy, distance_to_polygon, gaze_ray,
                             transform_point)
 from mcmot.global_match import union_duration
 from mcmot.global_match import build_global
-from mcmot.tracker import BBoxKalman, Track, assignment, paired_frames
+from mcmot.inventory import build_manifest
+from mcmot.tracker import (BBoxKalman, Track, assignment, load_roi,
+                           paired_frames)
 
 
 class ExportHtmlTest(unittest.TestCase):
@@ -129,6 +131,30 @@ class TrackingRecoveryTest(unittest.TestCase):
 
 
 class IOTest(unittest.TestCase):
+    def test_flat_export_inventory_and_combined_roi(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            site = root / "gumi_inside"
+            slot = site / "3407" / "2026-09-03"
+            slot.mkdir(parents=True)
+            stem = "2026-09-03_AABB_100000"
+            (slot / f"{stem}.csv").write_text("timestamp,frame_index\n", encoding="utf-8")
+            (slot / f"{stem}_bev.csv").write_text("timestamp,frame_index,x,y\n", encoding="utf-8")
+            (slot / f"{stem}.mp4").write_bytes(b"video")
+            cfg = {"site": "gumi_inside", "dates": ["2026-09-03"],
+                   "data_root": str(root), "video_root": str(site)}
+            records = build_manifest(cfg)
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0].stem, stem)
+            self.assertEqual(records[0].status, "ok")
+
+            roi = root / "roi.json"
+            roi.write_text('{"3407":{"image1_vertices_normalized":[[0,0]],'
+                           '"image2_vertices_normalized":[[1,1]]}}', encoding="utf-8")
+            camera, bev = load_roi(roi, "3407")
+            self.assertEqual(camera, [[[1, 1]]])
+            self.assertEqual(bev, [[[0, 0]]])
+
     def test_paired_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
             raw, bev = Path(tmp) / "raw.csv", Path(tmp) / "bev.csv"

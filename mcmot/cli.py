@@ -105,6 +105,12 @@ def main(argv=None):
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--skip-inference", action="store_true")
     parser.add_argument("--skip-video", action="store_true")
+    parser.add_argument("--report-name", default=None,
+                        help="report 명령이 생성할 HTML 파일명 (report 디렉토리 기준)")
+    parser.add_argument("--standalone-name", default=None,
+                        help="report 명령이 생성할 단독 실행 HTML 파일명")
+    parser.add_argument("--use-statistics", action="store_true",
+                        help="attributes/statistics의 새 성별·연령 집계를 보고서에 반영")
     args = parser.parse_args(argv)
     cfg = load_config(args.config)
     if args.command == "inventory":
@@ -117,7 +123,10 @@ def main(argv=None):
         run_all(cfg, args.deep, args.resume, args.skip_inference, args.skip_video)
     elif args.command == "report":
         cfg = select_output_root(cfg, fresh=False)
-        print(generate_report(Path(cfg["output_root"]), cfg))
+        print(generate_report(Path(cfg["output_root"]), cfg,
+                               filename=args.report_name or "index.html",
+                               export_filename=args.standalone_name,
+                               use_statistics=args.use_statistics))
     else:
         cfg = select_output_root(cfg, fresh=False)
         print(generate_video(Path(cfg["output_root"]), cfg))
