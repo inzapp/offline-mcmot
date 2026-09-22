@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import html
+import os
 from collections import Counter
 from pathlib import Path
 
@@ -16,6 +17,55 @@ def rows(path: Path) -> list[dict]:
         return []
     with path.open(encoding="utf-8-sig", newline="") as stream:
         return list(csv.DictReader(stream))
+
+
+def decade_age_group(value: str) -> str:
+    """Convert a continuous age estimate to a stable ten-year bucket."""
+    try:
+        age = float(value)
+    except (TypeError, ValueError):
+        return "unknown"
+    if age < 0:
+        return "unknown"
+    decade = int(age) // 10 * 10
+    return "80+" if decade >= 80 else f"{decade}-{decade + 9}"
+
+
+def apply_new_attributes(global_people: list[dict], attributes: list[dict]) -> list[dict]:
+    """Overlay results.csv values by representative crop without changing source CSVs."""
+    by_crop = {os.path.basename(row.get("file", "")): row for row in attributes
+               if row.get("status") == "ok" and row.get("file")}
+    updated = []
+    for person in global_people:
+        item = dict(person)
+        result = by_crop.get(os.path.basename(person.get("representative_crop_path", "")))
+        if result:
+            item["gender"] = result.get("gender") or "unknown"
+            item["age"] = decade_age_group(result.get("age", ""))
+        else:
+            item["gender"] = "unknown"
+            item["age"] = "unknown"
+        updated.append(item)
+    return updated
+
+
+def updated_spatial_summary(person_events: list[dict], global_people: list[dict]) -> list[dict]:
+    """Reaggregate existing spatial memberships with the new demographics."""
+    demographics = {row.get("global_id", ""): (row.get("gender", "unknown"),
+                                                  row.get("age", "unknown"))
+                    for row in global_people}
+    counts: Counter = Counter()
+    for event in person_events:
+        gender, age = demographics.get(event.get("global_id", ""), ("unknown", "unknown"))
+        first_seen = event.get("first_seen", "")
+        hour = f"{first_seen[11:13]}:00" if len(first_seen) >= 13 else "unknown"
+        common = (event.get("date", ""), event.get("dimension", ""),
+                  event.get("name", ""), gender, age)
+        counts[(common[0], "all", *common[1:])] += 1
+        counts[(common[0], hour, *common[1:])] += 1
+    return [{"date": key[0], "hour": key[1], "dimension": key[2], "name": key[3],
+             "gender": key[4], "age": key[5], "person_count": count}
+            for key, count in sorted(counts.items())]
 
 
 def table(data: list[dict], columns: list[str], limit=100) -> str:
@@ -65,10 +115,16 @@ def generate_report(output_root: Path, cfg: dict, filename: str = "index.html",
     global_people = rows(output_root / "global/persons.csv")
     associations = rows(output_root / "global/association_events.csv")
     topology = rows(output_root / "global/topology.csv")
-    attributes = rows(output_root / "attributes/inference_results.csv")
+    new_attributes_path = output_root / "attributes/results.csv"
+    attributes = rows(new_attributes_path if new_attributes_path.exists()
+                      else output_root / "attributes/inference_results.csv")
+    using_new_attributes = new_attributes_path.exists()
+    if using_new_attributes:
+        global_people = apply_new_attributes(global_people, attributes)
     issues = rows(output_root / "quality/issues.csv")
     accepted = [row for row in associations if row.get("accepted") == "1"]
     available_attributes = [row for row in attributes if row.get("status") == "ok"]
+    matched_attribute_count = sum(row.get("age") != "unknown" for row in global_people)
     bev_only = [row for row in local if "bev_only" in row.get("quality_flags", "")]
     invalid_videos = [row for row in manifest if "invalid_video" in row.get("status", "")]
     dates = sorted(set(cfg["dates"]))
@@ -92,7 +148,9 @@ def generate_report(output_root: Path, cfg: dict, filename: str = "index.html",
     watched = sum(float(x.get("watch_seconds") or 0) > 0 for x in global_people)
     attentive = sum(float(x.get("attention_seconds") or 0) > 0 for x in global_people)
     global_count = len(global_people)
-    age_labels = [label for label in cfg["attributes"]["age_labels"] if label != "unknown"] + ["unknown"]
+    age_labels = ([f"{start}-{start + 9}" for start in range(0, 80, 10)] + ["80+", "unknown"]
+                  if using_new_attributes else
+                  [label for label in cfg["attributes"]["age_labels"] if label != "unknown"] + ["unknown"])
     age_bars, daily_age, known_age_count = age_chart(global_people, age_labels)
     statistics_root = output_root / "attributes/statistics"
     if use_statistics:
@@ -118,7 +176,8 @@ def generate_report(output_root: Path, cfg: dict, filename: str = "index.html",
         ("시청률", f"{watched / global_count * 100:.2f}%" if global_count else "-", f"1초 이상 {watched:,}명 / {global_count:,}명"),
         ("주목률", f"{attentive / global_count * 100:.2f}%" if global_count else "-", f"3초 이상 {attentive:,}명 / {global_count:,}명"),
         ("Accepted matches", len(accepted), "BEV·시간·ReID 통과"),
-        ("Attribute coverage", len(available_attributes), f"{len(local)} IDs 중 실제 crop 보유"),
+        ("Attribute coverage", matched_attribute_count if using_new_attributes else len(available_attributes),
+         f"{global_count if using_new_attributes else len(local)} IDs 중 실제 crop 매칭"),
         ("BEV-only IDs", len(bev_only), "3421 raw 결손"),
         ("Invalid videos", len(invalid_videos), "메타데이터/디코딩 불가"),
         ("Data issues", len(issues), "임의 보완하지 않은 항목"),
@@ -128,12 +187,17 @@ def generate_report(output_root: Path, cfg: dict, filename: str = "index.html",
     mappings = rows(output_root / "global/id_mapping.csv")
     visuals = generate_report_assets(output_root, cfg, topology, associations, local, mappings)
     spatial_image, spatial_legend = spatial_map_asset(output_root, cfg)
-    spatial_summary = rows(output_root / "spatial/demographics_summary.csv")
+    spatial_summary = (updated_spatial_summary(rows(output_root / "spatial/person_events.csv"), global_people)
+                       if using_new_attributes else
+                       rows(output_root / "spatial/demographics_summary.csv"))
     explainer = visuals.get("global_id_explainer", {})
     for camera in sorted({row.get("camera_id", "") for row in local}):
         camera_local = [row for row in local if row.get("camera_id") == camera]
         camera_mapping = [row for row in mappings if row.get("camera_id") == camera]
-        camera_attrs = [row for row in available_attributes if f":{camera}:" in row.get("local_uid", "")]
+        camera_attrs = [row for row in available_attributes
+                        if (f"_{camera}_" in os.path.basename(row.get("file", ""))
+                            if using_new_attributes else
+                            f":{camera}:" in row.get("local_uid", ""))]
         camera_bev = [row for row in camera_local if "bev_only" in row.get("quality_flags", "")]
         camera_rows.append({"camera": camera, "local IDs": len(camera_local),
             "연결된 global IDs": len({row.get("global_id") for row in camera_mapping}),
