@@ -67,8 +67,8 @@ crop:
   update_every_detections: 3
   required_growth_ratio: 1.05
 attributes:
-  gender_model: /home/inzapp/adddi_light/app_main/model/onnx/mGtEx-sba-001.onnx
-  age_model: /home/inzapp/adddi_light/app_main/model/onnx/5age_cls_128x64_simclf.onnx
+  gender_model: /mnt/nvme1n1/offline-mcmot/models/attributes/mGtEx-sba-001.onnx
+  age_model: /mnt/nvme1n1/offline-mcmot/models/attributes/5age_cls_128x64_simclf.onnx
   gender_threshold: 0.42
   age_labels:
   - 0-14
@@ -77,9 +77,9 @@ attributes:
   - 50+
   - unknown
 reid:
-  repository: /home/inzapp/inz/git/reid
-  config: /home/inzapp/inz/git/reid/checkpoint/reid_284/cfg.yaml
-  model: /home/inzapp/inz/git/reid/checkpoint/reid_284/best_30000_iter_rank1_0.7643.h5
+  repository: /mnt/nvme1n1/offline-mcmot/models/reid
+  config: /mnt/nvme1n1/offline-mcmot/models/reid/cfg.yaml
+  model: /mnt/nvme1n1/offline-mcmot/models/reid/best_30000_iter_rank1_0.7643.h5
   distance_threshold: 0.9358518719673157
   diagnostic_eer_threshold: 1.0774096250534058
   batch_size: 32
