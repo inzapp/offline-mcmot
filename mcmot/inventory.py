@@ -7,7 +7,6 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 
-
 @dataclass
 class Recording:
     site: str
@@ -85,10 +84,15 @@ def build_manifest(cfg: dict, deep: bool = False) -> list[Recording]:
             # The original Pohang export separates raw/ and bev/.  Gumi keeps
             # both CSVs beside the video in camera/date directories.
             paths = safe_glob(data_site / camera / kind, "*/*.csv")
+            if kind == "raw":
+                paths = (path for path in paths
+                         if not path.name.endswith(("_260922.csv", "_pose_only.csv")))
             if not (data_site / camera / kind).is_dir():
                 pattern = "*/*_bev.csv" if kind == "bev" else "*/*.csv"
                 paths = (path for path in safe_glob(data_site / camera, pattern)
-                         if kind == "bev" or not path.name.endswith("_bev.csv"))
+                         if kind == "bev" or (not path.name.endswith("_bev.csv")
+                                              and not path.name.endswith(("_260922.csv",
+                                                                         "_pose_only.csv"))))
             for path in paths:
                 date, mac, start = parse_stem(path.stem)
                 recording_stem = path.stem[:-4] if kind == "bev" and path.stem.endswith("_bev") else path.stem

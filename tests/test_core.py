@@ -138,7 +138,12 @@ class IOTest(unittest.TestCase):
             slot = site / "3407" / "2026-09-03"
             slot.mkdir(parents=True)
             stem = "2026-09-03_AABB_100000"
-            (slot / f"{stem}.csv").write_text("timestamp,frame_index\n", encoding="utf-8")
+            selected_raw = slot / f"{stem}.csv"
+            selected_raw.write_text("timestamp,frame_index\n", encoding="utf-8")
+            (slot / f"{stem}_260922.csv").write_text(
+                "timestamp,frame_index\n", encoding="utf-8")
+            (slot / f"{stem}_pose_only.csv").write_text(
+                "timestamp,frame_index\n", encoding="utf-8")
             (slot / f"{stem}_bev.csv").write_text("timestamp,frame_index,x,y\n", encoding="utf-8")
             (slot / f"{stem}.mp4").write_bytes(b"video")
             cfg = {"site": "gumi_inside", "dates": ["2026-09-03"],
@@ -146,6 +151,7 @@ class IOTest(unittest.TestCase):
             records = build_manifest(cfg)
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0].stem, stem)
+            self.assertEqual(records[0].raw_path, str(selected_raw.resolve()))
             self.assertEqual(records[0].status, "ok")
 
             roi = root / "roi.json"

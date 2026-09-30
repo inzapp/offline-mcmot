@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export the latest Pohang tracking outputs in the Olymplanet sample shape.
+"""Export tracking outputs in the Olymplanet sample shape.
 
 The delivery package exposes tracking/path data and track-level gender/age
 values when the improved model produced a matching result. Aggregate
@@ -328,18 +328,20 @@ def make_description(
     sites: list[dict],
     package_name: str,
     created_at: str,
+    city: str,
 ) -> str:
+    dates = sorted({date for site in sites for date in site["dates"]})
     lines = [
-        "# 올림플래닛 제공용 Pohang raw 데이터 설명서",
+        f"# 올림플래닛 제공용 {city.capitalize()} raw 데이터 설명서",
         "",
         f"- 패키지: `{package_name}`",
         f"- 작성 시각: {created_at} (KST)",
-        "- 기준 데이터: 2026-09-04 ~ 2026-09-05, KST",
+        f"- 기준 데이터: {dates[0]} ~ {dates[-1]}, KST",
         "- 형식: UTF-8 JSON",
         "",
         "## 1. 산출물 구성",
         "",
-        "- raw 패키지: `olimplanet_raw_json_20260904-05_latest`",
+        f"- raw 패키지: `{package_name}`",
         "- JSON은 사이트별 `combined/all_cameras_raw.json`과 `by_camera/camera_*_raw.json`으로 구성됩니다.",
         "- 성별·연령은 track별 개선 모델 결과를 연결하며, 연결 결과가 없는 track은 `null`로 표시합니다.",
         "",
@@ -361,7 +363,7 @@ def make_description(
         "",
         "각 사이트에서 번호 기준으로 가장 최신인 처리 결과를 사용했으며, 두 사이트 모두 동일한 기간의 데이터를 포함합니다.",
         "",
-        "샘플과 동일한 `tracks`·`measure`·`path` 구조를 유지하고, 두 날짜를 한 파일에 담기 위해 JSON 머리말의 `data_dates`를 배열로 표기했습니다.",
+        "샘플과 동일한 `tracks`·`measure`·`path` 구조를 유지하고, 여러 날짜를 한 파일에 담기 위해 JSON 머리말의 `data_dates`를 배열로 표기했습니다.",
         "",
         "## 3. JSON 구조",
         "",
@@ -402,15 +404,15 @@ def make_description(
     return "\n".join(lines)
 
 
-def write_package_readme(package_root: Path, description_name: str) -> None:
+def write_package_readme(package_root: Path, description_name: str, city: str) -> None:
     text = f"""# 올림플래닛 제공용 raw JSON 패키지
 
 자세한 전달 규칙과 필드 설명은 함께 전달한 `{description_name}`를 참고하십시오.
 
 ## 디렉터리
 
-- `pohang_inside/`: 실내 데이터의 JSON
-- `pohang_outside/`: 실외 데이터의 JSON
+- `{city}_inside/`: 실내 데이터의 JSON
+- `{city}_outside/`: 실외 데이터의 JSON
 - `schema.json`: JSON 필드 및 성별·연령 제공 제한
 - `manifest.json`: 파일별 SHA-256, track/path 집계
 
@@ -422,7 +424,7 @@ def write_package_readme(package_root: Path, description_name: str) -> None:
     (package_root / "README.md").write_text(text, encoding="utf-8")
 
 
-def write_manifest(package_root: Path, metadata: dict) -> None:
+def write_manifest(package_root: Path, metadata: dict, package_name: str) -> None:
     files = []
     for path in sorted(package_root.rglob("*")):
         if not path.is_file() or path.name == "manifest.json":
@@ -435,7 +437,7 @@ def write_manifest(package_root: Path, metadata: dict) -> None:
             "encoding": "UTF-8",
         })
     payload = {
-        "package": PACKAGE_NAME,
+        "package": package_name,
         "created_at": metadata["created_at"],
         "format": "JSON",
         "data_period": metadata["data_period"],
@@ -494,42 +496,60 @@ def export_site(source_root: Path, package_root: Path, site: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--city", choices=["pohang", "gumi"], default="pohang")
     parser.add_argument("--inside", type=Path, default=None)
     parser.add_argument("--outside", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
     workspace = args.workspace.resolve()
-    inside = (args.inside or workspace / "output_pohang_inside4").resolve()
-    outside = (args.outside or workspace / "output_pohang_outside3").resolve()
+    default_inside = "output_pohang_inside4" if args.city == "pohang" else "output_gumi_inside3"
+    default_outside = "output_pohang_outside3" if args.city == "pohang" else "output_gumi_outside3"
+    inside = (args.inside or workspace / default_inside).resolve()
+    outside = (args.outside or workspace / default_outside).resolve()
     for path in (inside, outside):
         if not (path / "local" / "persons.csv").exists():
             raise SystemExit(f"missing source output: {path}")
+        if not (path / "local" / "tracks.csv").exists() or not (path / "attributes" / "results.csv").exists():
+            raise SystemExit(f"missing tracks or attributes output: {path}")
 
-    package_root = (args.output or workspace / PACKAGE_NAME).resolve()
+    source_dates = sorted({row["date"] for root in (inside, outside)
+                           for row in rows(root / "local" / "persons.csv") if row.get("date")})
+    if not source_dates:
+        raise SystemExit("no source dates found")
+    date_tag = source_dates[0].replace("-", "")
+    date_tag += "-" + (source_dates[-1][-2:] if source_dates[0][:7] == source_dates[-1][:7]
+                       else source_dates[-1].replace("-", ""))
+    package_name = (PACKAGE_NAME if args.city == "pohang" else
+                    f"olimplanet_{args.city}_raw_json_{date_tag}_latest")
+    description_name = ("olimplanet_data_description_20260904-05_latest.md"
+                        if args.city == "pohang" else
+                        f"olimplanet_{args.city}_data_description_{date_tag}_latest.md")
+
+    package_root = (args.output or workspace / package_name).resolve()
     if package_root.exists():
         raise SystemExit(f"output already exists; remove or choose another path: {package_root}")
     package_root.mkdir(parents=True)
     created_at = datetime.now().astimezone().isoformat(timespec="seconds")
-    inside_meta = export_site(inside, package_root, "pohang_inside")
-    outside_meta = export_site(outside, package_root, "pohang_outside")
+    inside_meta = export_site(inside, package_root, f"{args.city}_inside")
+    outside_meta = export_site(outside, package_root, f"{args.city}_outside")
     write_schema(package_root)
-    write_package_readme(package_root, "olimplanet_data_description_20260904-05_latest.md")
-    description = make_description(package_root, [inside_meta, outside_meta], PACKAGE_NAME, created_at)
-    description_path = workspace / "olimplanet_data_description_20260904-05_latest.md"
+    write_package_readme(package_root, description_name, args.city)
+    description = make_description(package_root, [inside_meta, outside_meta], package_name, created_at, args.city)
+    description_path = workspace / description_name
     description_path.write_text(description, encoding="utf-8")
     write_manifest(package_root, {
         "created_at": created_at,
         "data_period": sorted(set(inside_meta["dates"] + outside_meta["dates"])),
-        "sites": ["pohang_inside", "pohang_outside"],
+        "sites": [f"{args.city}_inside", f"{args.city}_outside"],
         "counts": {
-            "pohang_inside": inside_meta["counts"],
-            "pohang_outside": outside_meta["counts"],
+            f"{args.city}_inside": inside_meta["counts"],
+            f"{args.city}_outside": outside_meta["counts"],
         },
         "attribute_matching": {
-            "pohang_inside": inside_meta["attribute_matching"],
-            "pohang_outside": outside_meta["attribute_matching"],
+            f"{args.city}_inside": inside_meta["attribute_matching"],
+            f"{args.city}_outside": outside_meta["attribute_matching"],
         },
-    })
+    }, package_name)
     print(json.dumps({
         "package": str(package_root),
         "description": str(description_path),
