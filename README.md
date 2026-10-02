@@ -10,7 +10,13 @@ cross-camera global ID, 시청/주목 시간, 성별/연령, HTML 보고서와 �
 
 ## 기본 사용법
 
-저장소 루트에서 예제 설정을 복사합니다.
+저장소 루트에서 필요한 두 가상환경을 설치합니다. MiVOLO를 기본으로 포함하며 설정 파일이나 데이터 없이 실행할 수 있습니다.
+
+```bash
+./pipeline.sh setup
+```
+
+이후 예제 설정을 복사합니다.
 
 ```bash
 cp config.pipeline.example.yaml config.section.yaml

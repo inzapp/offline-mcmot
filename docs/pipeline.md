@@ -5,6 +5,20 @@
 추론/분석 패키지는 해당 단계에서 설치합니다. 최초 설치에는 인터넷과 Python 3.10이 필요합니다.
 다른 Python이 기본값이면 `PIPELINE_PYTHON=/경로/python3.10 ./pipeline.sh ...`로 지정하세요.
 
+최초 환경 준비는 설정 파일 없이 실행할 수 있습니다.
+
+```bash
+./pipeline.sh setup
+```
+
+`.venv`의 분석·ReID·GUI·PPT 보조 패키지와 `.venv_ultralytics`의 YOLO·MiVOLO 패키지를
+모두 설치합니다. 기본 PyTorch는 2.7.1, torchvision은 0.22.1, 설치 주소는 CUDA 12.8입니다.
+설치 완료된 환경은 재사용하며 이미지·영상·모델 가중치가 없어도 setup할 수 있습니다.
+설치 옵션을 바꾸려면 `./pipeline.sh setup --config config.section.yaml`로 YAML의
+`attributes.repository`, `torch_version`, `torchvision_version`, `torch_index_url`을 적용합니다.
+setup은 항상 MiVOLO를 포함합니다. 다른 명령에는 `--config`가 필요합니다.
+모델 가중치, NVIDIA 드라이버, ffprobe, Codex CLI와 로그인은 별도로 준비합니다.
+
 ## 설정과 데이터
 
 `config.pipeline.example.yaml`을 복사하여 `data_path`, `dates`, `output_root`,

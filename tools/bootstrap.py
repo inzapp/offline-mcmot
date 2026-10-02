@@ -75,7 +75,8 @@ def ultralytics_environment(attributes=None):
 
 if __name__ == '__main__':
     if not sys.argv[1:] or sys.argv[1:] in (['--help'], ['-h']):
-        print('Usage: ./pipeline.sh {status,setup,calibrate,spatial,raw,bev,validate,run,pptx,all} --config FILE\n'
+        print('Usage: ./pipeline.sh setup [--config FILE]\n'
+              '       ./pipeline.sh {status,calibrate,spatial,raw,bev,validate,run,pptx,all} --config FILE\n'
               'Options: --camera ID --force --resume --deep --check-models --skip-inference --with-video --skip-video\n'
               'Raw options: --det-model --pose-model --det-imgsz --pose-imgsz --det-conf --pose-conf --merge-iou --device')
         raise SystemExit(0)

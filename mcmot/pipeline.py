@@ -15,6 +15,21 @@ from .preparation import (bev_image, calibration_path, camera_matrix, convert_be
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def setup_environments(config_path=None):
+    """Install both environments without requiring images, videos, or weights."""
+    options = {'repository': str(ROOT / 'vendor/mivolo')}
+    if config_path:
+        options.update(load_config(config_path).get('attributes', {}))
+    options['backend'] = 'mivolo'
+    sys.path.insert(0, str(ROOT / 'tools'))
+    from bootstrap import analytics_environment, ultralytics_environment
+    print('Setup [1/2]: .venv — analysis, ReID, calibration, spatial GUI, PPT helpers', flush=True)
+    analytics_environment()
+    print('Setup [2/2]: .venv_ultralytics — YOLO detection/pose + MiVOLO', flush=True)
+    ultralytics_environment(options)
+    print('Setup complete: .venv + .venv_ultralytics (YOLO/MiVOLO shared)', flush=True)
+
+
 def run_process(arguments):
     print('실행: ' + ' '.join(map(str, arguments)), flush=True)
     subprocess.run(list(map(str, arguments)), check=True, cwd=ROOT)
@@ -136,7 +151,7 @@ def analysis(cfg, args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['status', 'setup', 'calibrate', 'spatial', 'raw', 'bev', 'validate', 'run', 'pptx', 'all'])
-    parser.add_argument('--config', required=True)
+    parser.add_argument('--config', help='YAML config; optional for setup, required for all other commands')
     parser.add_argument('--camera'); parser.add_argument('--force', action='store_true')
     parser.add_argument('--resume', action='store_true'); parser.add_argument('--deep', action='store_true')
     parser.add_argument('--skip-inference', action='store_true')
@@ -146,6 +161,11 @@ def main(argv=None):
     parser.add_argument('--check-models', action='store_true')
     from .raw import DEFAULTS, add_arguments
     add_arguments(parser); args = parser.parse_args(argv)
+    if args.command == 'setup':
+        setup_environments(args.config)
+        return
+    if not args.config:
+        parser.error('--config is required for commands other than setup')
     cfg = load_config(args.config)
     cfg.setdefault('pipeline', {}).setdefault('strict', True)
     if cfg.get('attributes', {}).get('backend') == 'mivolo':
@@ -156,13 +176,10 @@ def main(argv=None):
         return
     sys.path.insert(0, str(ROOT / 'tools'))
     from bootstrap import analytics_environment, ultralytics_environment
-    if args.command in ('setup', 'run', 'all', 'pptx') or args.check_models:
+    if args.command in ('run', 'all', 'pptx') or args.check_models:
         analytics_environment()
-    if args.command in ('setup', 'raw', 'all') or (args.check_models and cfg.get('attributes', {}).get('backend') == 'mivolo') or (args.command == 'run' and cfg.get('attributes', {}).get('backend') == 'mivolo' and not args.skip_inference):
+    if args.command in ('raw', 'all') or (args.check_models and cfg.get('attributes', {}).get('backend') == 'mivolo') or (args.command == 'run' and cfg.get('attributes', {}).get('backend') == 'mivolo' and not args.skip_inference):
         ultralytics_environment(cfg.get('attributes', {}))
-    if args.command == 'setup':
-        print('환경 준비 완료: .venv + .venv_ultralytics (raw/MiVOLO 공유)')
-        return
     if args.command == 'calibrate':
         calibrate(cfg, args.camera)
     if args.command == 'spatial':
