@@ -1,0 +1,104 @@
+# data_path, dates, 모델 경로와 spatial 구역을 실제 데이터에 맞게 변경하세요.
+# PPT를 포함하려면 pptx.template 경로를 추가하세요.
+site: section_example
+dates:
+- '2026-09-03'
+output_root: output_section_example
+tracking:
+  high_confidence: 0.25
+  low_confidence: 0.03
+  min_confirmed_hits: 2
+  center_min_confirmed_hits: 10
+  tentative_max_missed_seconds: 0.5
+  max_missed_seconds: 3.0
+  entry_camera_boundary_distance: 0.04
+  entry_bev_boundary_distance: 0.02
+  bev_recovery_gate: 0.025
+  bev_recovery_growth_per_second: 0.012
+  iou_gate: 0.05
+  mahalanobis_gate: 13.28
+  second_pass_iou_gate: 0.1
+  process_noise: 1.0
+  measurement_noise: 4.0
+watch:
+  keypoint_confidence: 0.05
+  normal_angle_deg: 75.0
+  small_bbox_width: 0.08
+  small_angle_deg: 55.0
+  watch_threshold_seconds: 1.0
+  attention_threshold_seconds: 3.0
+spatial:
+  routes: []
+  regions: []
+  gaze:
+    keypoint_confidence: 0.3
+    targets: []
+crop:
+  min_width_px: 2
+  min_height_px: 2
+  update_every_detections: 3
+  required_growth_ratio: 1.05
+attributes:
+  backend: mivolo
+  model_dir: /mnt/nvme1n1/Olim/Scripts/mivolvo/weights/mivolo_v2/age_gender
+  detector: /mnt/nvme1n1/Olim/Scripts/mivolvo/weights/mivolo_v2/yolov8x_person_face.pt
+  repository: vendor/mivolo
+  device: auto
+  threads: 4
+  face_conf: 0.4
+  min_face_size: 12
+  detector_size: 640
+  body_only: false
+  age_labels:
+  - 0-9
+  - 10-19
+  - 20-29
+  - 30-39
+  - 40-49
+  - 50-59
+  - 60-69
+  - 70-79
+  - 80+
+  - unknown
+reid:
+  repository: /mnt/nvme1n1/offline-mcmot/models/reid
+  config: /mnt/nvme1n1/offline-mcmot/models/reid/cfg.yaml
+  model: /mnt/nvme1n1/offline-mcmot/models/reid/best_30000_iter_rank1_0.7643.h5
+  distance_threshold: 0.9358518719673157
+  diagnostic_eer_threshold: 1.0774096250534058
+  batch_size: 32
+global_matching:
+  sync_tolerance_seconds: 0.2
+  simultaneous_bev_distance: 0.055
+  max_handoff_seconds: 8.0
+  max_bev_speed_per_second: 0.2
+  boundary_quantile: 0.15
+  min_topology_observations: 2
+  weights:
+    reid: 0.55
+    bev: 0.3
+    time: 0.15
+visualization:
+  enabled: true
+  max_cases: 5
+  seconds_per_case: 6
+  fps: 10
+  width: 1280
+  height: 720
+data_path: data/section_example
+extraction:
+  det_model: yolov8m.pt
+  pose_model: yolov8m-pose.pt
+  det_imgsz: 896
+  pose_imgsz: 1152
+  det_conf: 0.05
+  pose_conf: 0.02
+  merge_iou: 0.45
+  model_iou: 0.7
+  max_det: 10000
+  person_class: 0
+recording:
+  duration_tolerance_seconds: 3
+pptx:
+  prompt: prompts/report_pptx.md
+  timeout_seconds: 1800

@@ -11,13 +11,32 @@ def load_config(path: str | Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as stream:
         cfg = yaml.safe_load(stream) or {}
     base = path.parent
-    for key in ("data_root", "output_root", "bev_image", "roi_file"):
+    for key in ("data_root", "data_path", "video_root", "output_root", "bev_image", "roi_file"):
         if key not in cfg:
             continue
-        value = Path(cfg[key])
+        value = Path(cfg[key]).expanduser()
         if not value.is_absolute():
             cfg[key] = str((base / value).resolve())
-    cfg["video_root"] = str(Path(cfg["video_root"]).expanduser())
+    if cfg.get("data_path"):
+        cfg.setdefault("site", Path(cfg["data_path"]).name)
+        cfg.setdefault("video_root", cfg["data_path"])
+        cfg.setdefault("data_root", str(Path(cfg["data_path"]).parent))
+        root = Path(cfg["data_path"])
+        images = [p for p in root.glob("bev.*") if p.suffix.lower() in (".png", ".jpg")]
+        if "bev_image" not in cfg and len(images) == 1:
+            cfg["bev_image"] = str(images[0])
+        if "roi_file" not in cfg and (root / "roi.json").is_file():
+            cfg["roi_file"] = str(root / "roi.json")
+    for section, keys in (("attributes", ("model_dir", "detector", "repository", "python", "gender_model", "age_model")),
+                          ("reid", ("repository", "config", "model")),
+                          ("extraction", ("det_model", "pose_model")),
+                          ("pptx", ("template", "prompt", "output"))):
+        for key in keys:
+            if cfg.get(section, {}).get(key):
+                value = Path(cfg[section][key]).expanduser()
+                if section == "extraction" and not value.is_absolute() and len(value.parts) == 1:
+                    continue  # Keep model names stable before and after automatic download.
+                cfg[section][key] = str(value if value.is_absolute() else (base / value).resolve())
     cfg["config_path"] = str(path)
     return cfg
 

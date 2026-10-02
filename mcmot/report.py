@@ -118,8 +118,12 @@ def generate_report(output_root: Path, cfg: dict, filename: str = "index.html",
     new_attributes_path = output_root / "attributes/results.csv"
     attributes = rows(new_attributes_path if new_attributes_path.exists()
                       else output_root / "attributes/inference_results.csv")
-    using_new_attributes = new_attributes_path.exists()
-    if using_new_attributes:
+    integrated_mivolo = cfg.get("attributes", {}).get("backend") == "mivolo"
+    use_statistics = use_statistics and not integrated_mivolo
+    using_new_attributes = new_attributes_path.exists() and not integrated_mivolo
+    if integrated_mivolo:
+        attributes = rows(output_root / "attributes/inference_results.csv")
+    elif using_new_attributes:
         global_people = apply_new_attributes(global_people, attributes)
     issues = rows(output_root / "quality/issues.csv")
     accepted = [row for row in associations if row.get("accepted") == "1"]
@@ -149,7 +153,7 @@ def generate_report(output_root: Path, cfg: dict, filename: str = "index.html",
     attentive = sum(float(x.get("attention_seconds") or 0) > 0 for x in global_people)
     global_count = len(global_people)
     age_labels = ([f"{start}-{start + 9}" for start in range(0, 80, 10)] + ["80+", "unknown"]
-                  if using_new_attributes else
+                  if using_new_attributes or integrated_mivolo else
                   [label for label in cfg["attributes"]["age_labels"] if label != "unknown"] + ["unknown"])
     age_bars, daily_age, known_age_count = age_chart(global_people, age_labels)
     gender_counts = Counter((row.get("gender") or "unknown") for row in global_people)
@@ -256,6 +260,8 @@ h2{{margin:0 0 15px}}.cards{{display:grid;grid-template-columns:repeat(auto-fit,
 </main></body></html>"""
     target = output_root / "report" / filename
     target.parent.mkdir(parents=True, exist_ok=True)
+    if integrated_mivolo and not use_statistics:
+        content = content.replace('</main>', build_attribute_statistics_section(statistics_root, integrated=True) + '</main>')
     target.write_text(content, encoding="utf-8")
     standalone = target.with_name(export_filename or f"{target.stem}_export{target.suffix}")
     export_standalone_html(target, standalone)

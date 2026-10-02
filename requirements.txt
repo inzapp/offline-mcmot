@@ -7,3 +7,4 @@ tensorflow>=2.12,<3
 pandas>=1.4
 # Optional: enables mirrored Parquet outputs.
 pyarrow>=10
+python-pptx>=1.0

@@ -188,7 +188,7 @@ def _raw_csv_blocks(statistics_root: Path) -> str:
     return "".join(blocks)
 
 
-def build_attribute_statistics_section(statistics_root: Path) -> str:
+def build_attribute_statistics_section(statistics_root: Path, integrated: bool = False) -> str:
     """Render the aggregate attribute statistics without mixing units with global IDs."""
     summary = _rows(statistics_root / "summary.csv")
     age_distribution = _rows(statistics_root / "age_distribution.csv")
@@ -233,6 +233,10 @@ def build_attribute_statistics_section(statistics_root: Path) -> str:
         "attributes/statistics에 저장된 새 모델의 스냅샷 단위 집계입니다. 따라서 기존 보고서의 "
         "Global ID 기준 연령 수치와 직접 합산하거나 비교하지 않아야 합니다."
     )
+    if integrated:
+        provenance_note = ("이 섹션은 MiVOLO의 crop별 추론 처리 통계입니다. 같은 Global ID에 연결된 여러 crop이 "
+                           "각각 집계될 수 있습니다. 방문객·동선·시선 집계는 Global ID의 대표 crop 결과를 사용하므로 "
+                           "두 집계의 건수를 합산하지 않습니다.")
     return f'''<section id="attribute-statistics"><h2>새 모델 성별·연령 통계</h2>
 <p class="note">{provenance_note} 총 {total:,}개 스냅샷 중 성공 {html.escape(values.get("successful_snapshots", "-"))}건, 실패 {html.escape(values.get("failed_snapshots", "-"))}건입니다.</p>
 <div class="cards">{cards}</div>

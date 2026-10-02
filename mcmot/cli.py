@@ -49,9 +49,11 @@ def run_local(cfg: dict, records: list, resume: bool) -> None:
     dirs = ensure_output_dirs(cfg)
     tracks_path, persons_path = dirs["local"] / "tracks.csv", dirs["local"] / "persons.csv"
     segments_path, issues_path = dirs["local"] / "watch_segments.csv", dirs["quality"] / "issues.csv"
-    if resume and tracks_path.exists() and persons_path.exists() and segments_path.exists():
+    complete_path = dirs["local"] / ".complete"
+    if resume and complete_path.exists() and tracks_path.exists() and persons_path.exists() and segments_path.exists() and issues_path.exists():
         print("local: reused existing outputs")
         return
+    complete_path.unlink(missing_ok=True)
     with tracks_path.open("w", encoding="utf-8", newline="") as ts, persons_path.open("w", encoding="utf-8", newline="") as ps, segments_path.open("w", encoding="utf-8", newline="") as ss, issues_path.open("w", encoding="utf-8", newline="") as qs:
         tw, pw, sw, qw = (csv.DictWriter(ts, fieldnames=TRACK_FIELDS), csv.DictWriter(ps, fieldnames=PERSON_FIELDS),
                           csv.DictWriter(ss, fieldnames=SEGMENT_FIELDS), csv.DictWriter(qs, fieldnames=ISSUE_FIELDS))
@@ -64,6 +66,7 @@ def run_local(cfg: dict, records: list, resume: bool) -> None:
                 qw.writerow({"scope": record.stem, "severity": "error", "code": "recording_failed",
                              "detail": f"{type(exc).__name__}: {exc}"})
     for path in (tracks_path, persons_path, segments_path): maybe_parquet(path)
+    complete_path.write_text("complete\n", encoding="utf-8")
 
 
 def run_all(cfg: dict, deep_inventory: bool, resume: bool, skip_inference: bool,
@@ -74,12 +77,19 @@ def run_all(cfg: dict, deep_inventory: bool, resume: bool, skip_inference: bool,
         yaml.safe_dump(resolved, allow_unicode=True, sort_keys=False), encoding="utf-8")
     records = inventory(cfg, deep_inventory)
     run_local(cfg, records, resume)
+    if cfg.get("pipeline", {}).get("strict", False):
+        with (dirs["quality"] / "issues.csv").open(encoding="utf-8", newline="") as stream:
+            failures = [row for row in csv.DictReader(stream) if row.get("severity") == "error"]
+        if failures:
+            raise RuntimeError(f"local tracking 실패 {len(failures)}건: {dirs['quality'] / 'issues.csv'}")
     attrs_path = dirs["attributes/crops"].parent / "inference_results.csv"
     if not (resume and attrs_path.exists()):
         if skip_inference:
-            with attrs_path.open("w", encoding="utf-8", newline="") as stream:
+            partial = attrs_path.with_suffix(".csv.partial")
+            with partial.open("w", encoding="utf-8", newline="") as stream:
                 csv.DictWriter(stream, fieldnames=["local_uid", "crop_path", "gender", "gender_score", "age",
                     "age_index", "age_estimate", "age_score", "age_vector", "reid_embedding_path", "status"]).writeheader()
+            partial.replace(attrs_path)
         else:
             print("attributes/ReID: inference", flush=True)
             infer_all(dirs["local"] / "persons.csv", attrs_path, cfg)
@@ -99,7 +109,7 @@ def run_all(cfg: dict, deep_inventory: bool, resume: bool, skip_inference: bool,
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Offline MCMOT analytics")
-    parser.add_argument("command", choices=["inventory", "run", "report", "visualize"])
+    parser.add_argument("command", choices=["inventory", "validate", "run", "report", "visualize"])
     parser.add_argument("--config", default="config.pohang_inside.yaml")
     parser.add_argument("--deep", action="store_true", help="count every CSV row and ffprobe every video")
     parser.add_argument("--resume", action="store_true")
@@ -113,7 +123,12 @@ def main(argv=None):
                         help="attributes/statistics의 새 성별·연령 집계를 보고서에 반영")
     args = parser.parse_args(argv)
     cfg = load_config(args.config)
-    if args.command == "inventory":
+    if args.command == "validate":
+        from .preparation import show_status, validate_inputs
+        show_status(cfg)
+        if not validate_inputs(cfg, args.deep):
+            raise SystemExit(1)
+    elif args.command == "inventory":
         cfg = select_output_root(cfg, fresh=True)
         print(f"output: {cfg['output_root']}")
         inventory(cfg, args.deep)

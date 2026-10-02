@@ -4,3 +4,7 @@ data/
 output/
 output_*/
 .pytest_cache/
+.venv*/
+work/
+/yolov8*.pt
+*.spatial.bak

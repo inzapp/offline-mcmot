@@ -117,20 +117,18 @@ class Track:
 
 
 def _roi_payload(path: Path, camera_id: str | None = None) -> dict:
-    with path.open(encoding="utf-8") as stream:
-        data = json.load(stream)
+    from .preparation import camera_payload
+    data = camera_payload(path, camera_id)
     if camera_id is not None and not data.get("rois"):
-        try:
-            data = {"rois": [data[camera_id]]}
-        except KeyError as exc:
-            raise ValueError(f"camera {camera_id} missing from ROI file: {path}") from exc
+        raise ValueError(f"camera {camera_id} missing from ROI file: {path}")
     return data
 
 
 def roi_path_and_camera(cfg: dict, camera_id: str) -> tuple[Path, str | None]:
     if cfg.get("roi_file"):
         return Path(cfg["roi_file"]), camera_id
-    return (Path(cfg["data_root"]) / cfg["site"] / camera_id /
+    from .preparation import section_root
+    return (section_root(cfg) / camera_id /
             f"{camera_id}_roi.json"), None
 
 
@@ -416,7 +414,8 @@ def process_recording(record, cfg: dict, track_writer, person_writer, segment_wr
         return
     roi_path, roi_camera = roi_path_and_camera(cfg, record.camera_id)
     camera_rois, bev_rois = load_roi(roi_path, roi_camera)
-    camera_to_bev = load_camera_to_bev(roi_path, roi_camera)
+    from .preparation import camera_matrix
+    camera_to_bev = camera_matrix(cfg, record.camera_id)
     tc, wc, cc = cfg["tracking"], cfg["watch"], cfg["crop"]
     active: list[Track] = []
     completed: list[Track] = []

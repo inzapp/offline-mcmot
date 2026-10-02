@@ -3,7 +3,7 @@ dates:
 - '2026-09-04'
 - '2026-09-05'
 data_root: data
-video_root: /home/inzapp/mnt/olim
+video_root: /mnt/nvme1n1/Olim/data/pohang/pohang_outside
 output_root: output_pohang_outside
 bev_image: data/pohang_outside/bev_image.png
 tracking:
@@ -67,15 +67,18 @@ crop:
   update_every_detections: 3
   required_growth_ratio: 1.05
 attributes:
-  gender_model: /mnt/nvme1n1/offline-mcmot/models/attributes/mGtEx-sba-001.onnx
-  age_model: /mnt/nvme1n1/offline-mcmot/models/attributes/5age_cls_128x64_simclf.onnx
-  gender_threshold: 0.42
-  age_labels:
-  - 0-14
-  - 14-20
-  - 20-50
-  - 50+
-  - unknown
+  backend: mivolo
+  model_dir: /mnt/nvme1n1/Olim/Scripts/mivolvo/weights/mivolo_v2/age_gender
+  detector: /mnt/nvme1n1/Olim/Scripts/mivolvo/weights/mivolo_v2/yolov8x_person_face.pt
+  repository: vendor/mivolo
+  device: auto
+  threads: 4
+  face_conf: 0.4
+  min_face_size: 12
+  detector_size: 640
+  body_only: false
+  age_labels: ["0-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-69", "70-79", "80+", "unknown"]
+
 reid:
   repository: /mnt/nvme1n1/offline-mcmot/models/reid
   config: /mnt/nvme1n1/offline-mcmot/models/reid/cfg.yaml

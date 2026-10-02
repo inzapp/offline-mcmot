@@ -75,7 +75,7 @@ def safe_glob(path: Path, pattern: str):
 
 def build_manifest(cfg: dict, deep: bool = False) -> list[Recording]:
     site, dates = cfg["site"], set(cfg["dates"])
-    data_site = Path(cfg["data_root"]) / site
+    data_site = Path(cfg["data_path"]) if cfg.get("data_path") else Path(cfg["data_root"]) / site
     video_root = Path(cfg["video_root"])
     records: dict[tuple[str, str], Recording] = {}
     cameras = sorted(path.name for path in data_site.iterdir() if path.is_dir())
@@ -110,6 +110,11 @@ def build_manifest(cfg: dict, deep: bool = False) -> list[Recording]:
                 key = (camera, path.stem)
                 rec = records.setdefault(key, Recording(site, camera, date, path.stem, mac, start))
                 rec.video_path, rec.video_bytes = str(path.resolve()), path.stat().st_size
+                for kind, neighbor in (("raw", path.with_suffix(".csv")),
+                                       ("bev", path.with_name(path.stem + "_bev.csv"))):
+                    if neighbor.is_file():
+                        setattr(rec, f"{kind}_path", str(neighbor.resolve()))
+                        setattr(rec, f"{kind}_bytes", neighbor.stat().st_size)
     for rec in records.values():
         missing = [kind for kind in ("raw", "bev", "video") if not getattr(rec, f"{kind}_path")]
         rec.status = "ok" if not missing else "missing_" + "_".join(missing)

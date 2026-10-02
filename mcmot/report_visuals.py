@@ -7,6 +7,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from .preparation import image_candidates, section_root
 
 
 COLORS = [(38, 170, 255), (80, 210, 120), (230, 120, 70), (190, 90, 220)]
@@ -30,36 +31,54 @@ def _label(image: np.ndarray, text: str, at: tuple[int, int], scale=.65) -> None
     cv2.putText(image, text, at, cv2.FONT_HERSHEY_SIMPLEX, scale, (245, 250, 252), 1, cv2.LINE_AA)
 
 
-def _roi_specs(cfg: dict) -> dict[str, dict]:
-    root = Path(cfg["data_root"]) / cfg["site"]
+def _roi_specs(cfg: dict) -> dict[str, list[dict]]:
+    root = section_root(cfg)
     if cfg.get("roi_file"):
         payload = json.loads(Path(cfg["roi_file"]).read_text(encoding="utf-8"))
-        return {str(camera): spec for camera, spec in payload.items()
+        return {str(camera): spec.get("rois", [spec]) for camera, spec in payload.items()
                 if (root / str(camera)).is_dir()}
     specs = {}
     for path in sorted(root.glob("*/*_roi.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
         if payload.get("rois"):
-            specs[path.parent.name] = payload["rois"][0]
+            specs[path.parent.name] = payload["rois"]
     return specs
 
 
-def _camera_roi_images(cfg: dict, assets: Path, specs: dict[str, dict]) -> list[dict]:
-    root = Path(cfg["data_root"]) / cfg["site"]
+def _roi_polygons(rois, side, shape):
+    polygons = []
+    for roi in rois:
+        normalized = roi.get(f"image{side}_vertices_normalized")
+        points = (np.asarray(normalized, dtype=float) * [shape[1], shape[0]] if normalized is not None
+                  else np.asarray(roi[f"image{side}_vertices_px"], dtype=float))
+        if points.ndim != 2 or points.shape[1] != 2 or len(points) < 3 or not np.isfinite(points).all():
+            raise ValueError(f"Invalid image{side} ROI polygon")
+        polygons.append(np.rint(points).astype(np.int32))
+    return polygons
+
+
+def _camera_image(root, camera):
+    images = image_candidates(root / camera, camera)
+    return cv2.imread(str(images[0])) if len(images) == 1 else None
+
+
+def _camera_roi_images(cfg: dict, assets: Path, specs: dict[str, list[dict]]) -> list[dict]:
+    root = section_root(cfg)
     result = []
     for index, (camera, spec) in enumerate(sorted(specs.items())):
-        source = cv2.imread(str(root / camera / f"{camera}.png"))
+        source = _camera_image(root, camera)
         if source is None:
             continue
         overlay = source.copy()
-        points = np.asarray(spec["image2_vertices_px"], np.int32)
+        polygons = _roi_polygons(spec, 2, source.shape)
         color = COLORS[index % len(COLORS)]
-        cv2.fillPoly(overlay, [points], color)
+        cv2.fillPoly(overlay, polygons, color)
         image = cv2.addWeighted(overlay, .24, source, .76, 0)
-        cv2.polylines(image, [points], True, color, 5, cv2.LINE_AA)
+        cv2.polylines(image, polygons, True, color, 5, cv2.LINE_AA)
         # The outer band is where track starts/ends are considered for handoff topology.
-        cv2.polylines(image, [points], True, (255, 255, 255), 12, cv2.LINE_AA)
-        cv2.polylines(image, [points], True, color, 5, cv2.LINE_AA)
+        cv2.polylines(image, polygons, True, (255, 255, 255), 12, cv2.LINE_AA)
+        cv2.polylines(image, polygons, True, color, 5, cv2.LINE_AA)
+        points = np.concatenate(polygons)
         for number, point in enumerate(points):
             cv2.circle(image, tuple(point), 7, (255, 255, 255), -1)
             _label(image, str(number + 1), (int(point[0]) + 8, int(point[1]) - 8), .48)
@@ -69,19 +88,20 @@ def _camera_roi_images(cfg: dict, assets: Path, specs: dict[str, dict]) -> list[
     return result
 
 
-def _bev_overview(cfg: dict, assets: Path, specs: dict[str, dict], topology: list[dict]) -> tuple[str, str]:
+def _bev_overview(cfg: dict, assets: Path, specs: dict[str, list[dict]], topology: list[dict]) -> tuple[str, str]:
     bev = cv2.imread(str(cfg["bev_image"]))
     if bev is None:
         return "", ""
     coverage = bev.copy()
     centers = {}
     for index, (camera, spec) in enumerate(sorted(specs.items())):
-        points = np.asarray(spec["image1_vertices_px"], np.int32)
+        polygons = _roi_polygons(spec, 1, bev.shape)
+        points = np.concatenate(polygons)
         color = COLORS[index % len(COLORS)]
         layer = coverage.copy()
-        cv2.fillPoly(layer, [points], color)
+        cv2.fillPoly(layer, polygons, color)
         coverage = cv2.addWeighted(layer, .20, coverage, .80, 0)
-        cv2.polylines(coverage, [points], True, color, 3, cv2.LINE_AA)
+        cv2.polylines(coverage, polygons, True, color, 3, cv2.LINE_AA)
         clipped = np.clip(points, [0, 0], [bev.shape[1] - 1, bev.shape[0] - 1])
         center = tuple(np.mean(clipped, axis=0).astype(int))
         centers[camera] = center
@@ -171,9 +191,9 @@ def _track_visuals(output_root: Path, cfg: dict, assets: Path, mappings: list[di
     return heat_src, gallery, endpoints
 
 
-def _boundary_images(cfg: dict, assets: Path, specs: dict[str, dict], persons: list[dict],
+def _boundary_images(cfg: dict, assets: Path, specs: dict[str, list[dict]], persons: list[dict],
                      endpoints: dict) -> list[dict]:
-    root = Path(cfg["data_root"]) / cfg["site"]
+    root = section_root(cfg)
     quantile = float(cfg["global_matching"]["boundary_quantile"])
     result = []
     for index, (camera, spec) in enumerate(sorted(specs.items())):
@@ -184,16 +204,16 @@ def _boundary_images(cfg: dict, assets: Path, specs: dict[str, dict], persons: l
         if not values:
             continue
         threshold = float(np.quantile(values, quantile))
-        source = cv2.imread(str(root / camera / f"{camera}.png"))
+        source = _camera_image(root, camera)
         if source is None:
             continue
         height, width = source.shape[:2]
-        points = np.asarray(spec["image2_vertices_px"], np.int32)
+        polygons = _roi_polygons(spec, 2, source.shape)
         image = source.copy()
         shade = source.copy()
-        cv2.polylines(shade, [points], True, (0, 210, 255), 38, cv2.LINE_AA)
+        cv2.polylines(shade, polygons, True, (0, 210, 255), 38, cv2.LINE_AA)
         image = cv2.addWeighted(shade, .27, image, .73, 0)
-        cv2.polylines(image, [points], True, (0, 210, 255), 4, cv2.LINE_AA)
+        cv2.polylines(image, polygons, True, (0, 210, 255), 4, cv2.LINE_AA)
         starts, ends = [], []
         for row in camera_people:
             pair = endpoints.get(row["local_uid"])

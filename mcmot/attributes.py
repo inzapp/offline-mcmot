@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import sys
+import json
+import subprocess
 from pathlib import Path
 
 import cv2
@@ -87,7 +89,19 @@ def infer_all(persons_path: Path, output_path: Path, cfg: dict) -> dict[str, np.
         image = cv2.imread(person["crop_path"]) if person.get("crop_path") else None
         if image is not None:
             valid.append((person, image))
-    attr = AttributeModels(cfg["attributes"]) if valid else None
+    mivolo = cfg["attributes"].get("backend") == "mivolo"
+    new_results = {}
+    if mivolo:
+        options_path = output_path.parent / "mivolo_options.json"
+        options_path.write_text(json.dumps(cfg["attributes"], indent=2), encoding="utf-8")
+        results_path = output_path.parent / "results.csv"
+        python = cfg["attributes"].get("python") or str(Path(__file__).resolve().parents[1] / ".venv_ultralytics/bin/python")
+        subprocess.run([python, str(Path(__file__).resolve().parents[1] / "tools/infer_mivolo.py"),
+                        "--persons", str(persons_path), "--output", str(results_path),
+                        "--options", str(options_path)], check=True)
+        with results_path.open(encoding="utf-8-sig", newline="") as stream:
+            new_results = {row["local_uid"]: row for row in csv.DictReader(stream)}
+    attr = AttributeModels(cfg["attributes"]) if valid and not mivolo else None
     reid = ReIDModel(cfg["reid"]) if valid else None
     batch_size = int(cfg["reid"].get("batch_size", 32))
     reid_dir = output_path.parent / "embeddings"
@@ -98,7 +112,8 @@ def infer_all(persons_path: Path, output_path: Path, cfg: dict) -> dict[str, np.
         vectors = reid.embed([image for _, image in batch])
         for (person, _), vector in zip(batch, vectors):
             embedded[person["local_uid"]] = vector
-    with output_path.open("w", encoding="utf-8", newline="") as stream:
+    partial = output_path.with_suffix(".csv.partial")
+    with partial.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
         for person in persons:
@@ -108,15 +123,34 @@ def infer_all(persons_path: Path, output_path: Path, cfg: dict) -> dict[str, np.
                 writer.writerow({"local_uid": uid, "crop_path": crop_path, "status": "unavailable"})
                 continue
             try:
-                result = attr.infer(image)
                 vector = embedded[uid]
                 safe = uid.replace(":", "_") + ".npy"
                 embedding_path = reid_dir / safe
                 np.save(embedding_path, vector)
                 embeddings[uid] = vector
+                if mivolo:
+                    result = normalize_mivolo(new_results.get(uid, {}))
+                else:
+                    result = attr.infer(image)
                 writer.writerow({"local_uid": uid, "crop_path": crop_path, **result,
-                                 "reid_embedding_path": str(embedding_path.resolve()), "status": "ok"})
+                                 "reid_embedding_path": str(embedding_path.resolve()),
+                                 "status": "ok" if not mivolo or new_results.get(uid, {}).get("status") == "ok" else "attributes_unavailable"})
             except Exception as exc:
                 writer.writerow({"local_uid": uid, "crop_path": crop_path,
                                  "status": f"error:{type(exc).__name__}:{exc}"})
+    partial.replace(output_path)
     return embeddings
+
+
+def normalize_mivolo(row):
+    """Keep continuous age separate from the categorical age used by aggregation."""
+    from .mivolo_statistics import age_band
+    try:
+        age = float(row['age'])
+        valid = row.get('status') == 'ok' and np.isfinite(age) and age >= 0
+    except (KeyError, TypeError, ValueError):
+        valid = False
+    if not valid:
+        return {'gender': 'unknown', 'age': 'unknown', 'age_estimate': ''}
+    return {'gender': row.get('gender', 'unknown').lower(), 'gender_score': row.get('gender_score', ''),
+            'age': age_band(age), 'age_estimate': age, 'age_index': '', 'age_score': '', 'age_vector': ''}

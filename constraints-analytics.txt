@@ -1,0 +1,4 @@
+# Preserve the TensorFlow/Keras generation used by the existing H5 ReID model.
+tensorflow==2.12.0
+numpy==1.23.5
+opencv-python<=4.11.0.86

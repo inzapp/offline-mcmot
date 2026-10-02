@@ -1,33 +1,56 @@
 # Offline MCMOT analytics
 
+통합 실행은 `pipeline.sh`를 사용합니다. 필요한 가상환경과 패키지는 자동 생성·설치됩니다.
+새 데이터 구조·수동 보정·MiVOLO·단계별 실행 방법은 [통합 실행 안내](docs/pipeline.md)를 참고하세요.
+새 설정의 출발점은 [config.pipeline.example.yaml](config.pipeline.example.yaml)입니다.
+
 카메라별 pose detection CSV와 BEV 좌표, 원본 영상을 결합해 local MOT,
 cross-camera global ID, 시청/주목 시간, 성별/연령, HTML 보고서와 검증 영상을
 생성하는 재현 가능한 오프라인 파이프라인입니다.
 
-## 실행 환경
+## 기본 사용법
 
-이 장비에서는 TensorFlow, ONNX Runtime, OpenCV가 함께 설치된 `tf` pyenv를
-사용합니다.
-
-```bash
-PYENV_VERSION=tf python -m mcmot.cli inventory --config config.pohang_inside.yaml
-PYENV_VERSION=tf python -m mcmot.cli run --config config.pohang_inside.yaml
-```
-
-원본 영상 마운트가 접근 가능한지 먼저 확인해야 합니다. 영상이 없거나 마운트가
-끊기면 tracking은 가능한 입력으로 계속되지만 crop, ReID, 성별/연령과 매칭
-사례 영상은 생성할 수 없습니다.
-
-빠른 구조 검증은 영상 추론 없이 실행할 수 있습니다.
+저장소 루트에서 예제 설정을 복사합니다.
 
 ```bash
-PYENV_VERSION=tf python -m unittest discover -s tests -v
-PYENV_VERSION=tf python -m mcmot.cli inventory --config config.pohang_inside.yaml
+cp config.pipeline.example.yaml config.section.yaml
 ```
 
-전체 실행 결과는 기본적으로 `output/` 아래에 저장됩니다. 중간 단계 CSV가
-이미 있으면 `--resume`으로 재사용할 수 있습니다. Parquet은 `pyarrow`가 설치된
-경우 CSV와 함께 생성되고, 없으면 CSV만 생성됩니다.
+`config.section.yaml`의 `data_path`, `dates`, `output_root`, MiVOLO·ReID 모델 경로를
+실제 데이터에 맞게 수정합니다. `spatial` 구역은 아래 GUI에서 설정합니다. BEV 이미지와 카메라별 샘플 이미지를
+준비하고, 기존 ROI/호모그래피를 복사하거나 보정 GUI에서 대응점을 지정합니다.
+
+```bash
+# 이미지·영상·Raw CSV·BEV CSV 수와 매칭 현황
+./pipeline.sh status --config config.section.yaml
+
+# 기존 보정이 없을 때: 카메라 ↔ BEV 대응점 4쌍 이상 지정
+./pipeline.sh calibrate --config config.section.yaml
+
+# BEV 위에서 동선·공간·시선 구역을 그리고 YAML에 저장
+./pipeline.sh spatial --config config.section.yaml
+
+# Raw 추론 → BEV 변환 → 검증 → tracking/ReID/MiVOLO → HTML → PPT
+./pipeline.sh all --config config.section.yaml --deep
+```
+
+PPT 생성은 YAML의 `pptx.template`, `pptx.prompt`를 지정하고 Codex CLI 로그인을
+준비해야 합니다. 설정하지 않으면 분석과 HTML 보고서까지 생성합니다.
+처음 설치에는 Python 3.10과 인터넷이 필요하며, 영상 검증에는 `ffprobe`가 필요합니다.
+영상 마운트와 모델 파일 경로도 접근 가능해야 합니다.
+
+Raw·BEV 생성 결과는 영상 옆에, 분석 결과는 YAML의 `output_root`에 저장합니다.
+기존 분석 출력이 있으면 번호가 붙은 새 출력 경로를 사용하며,
+입력·설정이 같은 분석 결과를 재사용하려면 `--resume`을 추가합니다.
+Raw·BEV는 완료 메타데이터가 일치하면 자동 재사용합니다.
+기본 실행은 결과 시각화 영상 생성을 생략하며, 필요하면 `--with-video`를 추가합니다.
+
+기존 TensorFlow ReID와 MiVOLO의 의존성 호환성 때문에 환경은 두 개입니다.
+`.venv`는 분석·ReID, `.venv_ultralytics`는 YOLO Raw·MiVOLO를 함께 실행합니다.
+수동으로 환경을 활성화할 필요는 없습니다.
+
+데이터 폴더 구조, YAML 항목, 단계별 명령과 재실행 규칙은
+[통합 실행 안내](docs/pipeline.md)에 정리했습니다.
 
 ## 주요 산출물
 
@@ -53,21 +76,14 @@ BEV 정규화 좌표로 정의되어 있습니다. OOI 시선 ray가 추가된 �
 기존 보고서를 단일 파일로 다시 export할 수도 있습니다.
 
 ```bash
-PYENV_VERSION=tf python -m mcmot.export_html \
+.venv/bin/python -m mcmot.export_html \
   output/report/index.html output/report/index_export.html
 ```
 
-`attributes/statistics`에 별도로 저장된 새 성별·연령 스냅샷 집계를 기존 보고서와
-분리된 이름으로 반영할 수도 있습니다. `--standalone-name` 파일은 이미지가 내장되어
-단독으로 열 수 있습니다.
-
-```bash
-PYENV_VERSION=tf python -m mcmot.cli report \
-  --config config.pohang_inside.yaml \
-  --report-name index_statistics.html \
-  --standalone-name pohang_inside3_statistics.html \
-  --use-statistics
-```
+성별·연령은 처음부터 MiVOLO 결과를 보고서에 반영합니다.
+`attributes/results.csv`에 원시 추론 결과를 저장하고,
+`attributes/statistics/`에는 crop 기준 처리 통계를 저장합니다.
+Global ID 기준 방문객 집계는 `global/persons.csv`를 사용합니다.
 
 포항 실내 설정은 [config.pohang_inside.yaml](config.pohang_inside.yaml), 포항 실외
 설정은 [config.pohang_outside.yaml](config.pohang_outside.yaml)에 기록되어 있습니다.

@@ -1,0 +1,246 @@
+site: e2e_gumi_inside_30s
+dates:
+- '2026-09-05'
+output_root: output_e2e_gumi_inside_30s
+tracking:
+  high_confidence: 0.25
+  low_confidence: 0.03
+  min_confirmed_hits: 5
+  center_min_confirmed_hits: 15
+  tentative_max_missed_seconds: 1.0
+  max_missed_seconds: 8.0
+  entry_camera_boundary_distance: 0.04
+  entry_bev_boundary_distance: 0.02
+  bev_recovery_gate: 0.05
+  bev_recovery_growth_per_second: 0.025
+  iou_gate: 0.02
+  mahalanobis_gate: 25.0
+  second_pass_iou_gate: 0.03
+  process_noise: 1.0
+  measurement_noise: 4.0
+watch:
+  keypoint_confidence: 0.05
+  normal_angle_deg: 75.0
+  small_bbox_width: 0.08
+  small_angle_deg: 55.0
+  watch_threshold_seconds: 1.0
+  attention_threshold_seconds: 3.0
+spatial:
+  routes:
+  - name: 관람공간 동선
+    bidirectional: false
+    start_gate:
+    - - 0.59
+      - 0.44
+    - - 0.67
+      - 0.44
+    - - 0.67
+      - 0.59
+    - - 0.59
+      - 0.59
+    end_gate:
+    - - 0.36
+      - 0.44
+    - - 0.44
+      - 0.44
+    - - 0.44
+      - 0.59
+    - - 0.36
+      - 0.59
+  regions:
+  - name: 관람공간
+    polygon:
+    - - 0.36
+      - 0.43
+    - - 0.66
+      - 0.43
+    - - 0.66
+      - 0.59
+    - - 0.36
+      - 0.59
+  - name: 좌측 부스
+    polygon:
+    - - 0.24
+      - 0.43
+    - - 0.36
+      - 0.43
+    - - 0.36
+      - 0.59
+    - - 0.24
+      - 0.59
+  - name: 우측 부스
+    polygon:
+    - - 0.66
+      - 0.43
+    - - 0.75
+      - 0.43
+    - - 0.75
+      - 0.59
+    - - 0.66
+      - 0.59
+  gaze:
+    keypoint_confidence: 0.3
+    targets:
+    - name: 관람공간→상단 부스 시선
+      source_polygon:
+      - - 0.36
+        - 0.43
+      - - 0.66
+        - 0.43
+      - - 0.66
+        - 0.59
+      - - 0.36
+        - 0.59
+      target_polygon:
+      - - 0.0967
+        - 0.1639
+      - - 0.9247
+        - 0.1639
+      - - 0.9247
+        - 0.3182
+      - - 0.0967
+        - 0.3182
+    - name: 관람공간→좌측 외곽 부스 시선
+      source_polygon:
+      - - 0.36
+        - 0.43
+      - - 0.66
+        - 0.43
+      - - 0.66
+        - 0.59
+      - - 0.36
+        - 0.59
+      target_polygon:
+      - - 0.0726
+        - 0.3364
+      - - 0.1593
+        - 0.3364
+      - - 0.1593
+        - 0.629
+      - - 0.0726
+        - 0.629
+    - name: 관람공간→우측 외곽 부스 시선
+      source_polygon:
+      - - 0.36
+        - 0.43
+      - - 0.66
+        - 0.43
+      - - 0.66
+        - 0.59
+      - - 0.36
+        - 0.59
+      target_polygon:
+      - - 0.8516
+        - 0.3537
+      - - 0.939
+        - 0.3537
+      - - 0.939
+        - 0.6463
+      - - 0.8516
+        - 0.6463
+    - name: 관람공간→좌측 부스 시선
+      source_polygon:
+      - - 0.36
+        - 0.43
+      - - 0.66
+        - 0.43
+      - - 0.66
+        - 0.59
+      - - 0.36
+        - 0.59
+      target_polygon:
+      - - 0.24
+        - 0.43
+      - - 0.36
+        - 0.43
+      - - 0.36
+        - 0.59
+      - - 0.24
+        - 0.59
+    - name: 관람공간→우측 부스 시선
+      source_polygon:
+      - - 0.36
+        - 0.43
+      - - 0.66
+        - 0.43
+      - - 0.66
+        - 0.59
+      - - 0.36
+        - 0.59
+      target_polygon:
+      - - 0.66
+        - 0.43
+      - - 0.75
+        - 0.43
+      - - 0.75
+        - 0.59
+      - - 0.66
+        - 0.59
+crop:
+  min_width_px: 2
+  min_height_px: 2
+  update_every_detections: 3
+  required_growth_ratio: 1.05
+attributes:
+  backend: mivolo
+  model_dir: /mnt/nvme1n1/Olim/Scripts/mivolvo/weights/mivolo_v2/age_gender
+  detector: /mnt/nvme1n1/Olim/Scripts/mivolvo/weights/mivolo_v2/yolov8x_person_face.pt
+  repository: vendor/mivolo
+  device: cuda:0
+  threads: 4
+  face_conf: 0.4
+  min_face_size: 12
+  detector_size: 640
+  body_only: false
+  age_labels:
+  - 0-9
+  - 10-19
+  - 20-29
+  - 30-39
+  - 40-49
+  - 50-59
+  - 60-69
+  - 70-79
+  - 80+
+  - unknown
+reid:
+  repository: /mnt/nvme1n1/offline-mcmot/models/reid
+  config: /mnt/nvme1n1/offline-mcmot/models/reid/cfg.yaml
+  model: /mnt/nvme1n1/offline-mcmot/models/reid/best_30000_iter_rank1_0.7643.h5
+  distance_threshold: 1.08
+  diagnostic_eer_threshold: 1.0774096250534058
+  batch_size: 32
+global_matching:
+  sync_tolerance_seconds: 0.35
+  simultaneous_bev_distance: 0.075
+  max_handoff_seconds: 12.0
+  max_bev_speed_per_second: 0.3
+  boundary_quantile: 0.3
+  min_topology_observations: 2
+  weights:
+    reid: 0.5
+    bev: 0.3
+    time: 0.2
+visualization:
+  enabled: true
+  excluded_reid_report_global_ids: []
+  reid_report_pairs: []
+  max_cases: 5
+  seconds_per_case: 6
+  fps: 10
+  width: 1280
+  height: 720
+data_path: data/e2e_gumi_inside_30s
+extraction:
+  det_model: yolov8m.pt
+  pose_model: yolov8m-pose.pt
+  det_imgsz: 896
+  pose_imgsz: 1152
+  det_conf: 0.05
+  pose_conf: 0.02
+  merge_iou: 0.45
+  device: '0'
+pptx:
+  template: /mnt/nvme1n1/offline-mcmot/sample_output_pptx/GAMFF2026_구미_실내외_결과보고서_ROI반영_v3.pptx
+  prompt: prompts/e2e_gumi_inside_30s_pptx.md
+  timeout_seconds: 1800

@@ -1,0 +1,11 @@
+# Raw YOLO and MiVOLO share .venv_ultralytics; no requirements_ultralytics.txt.
+numpy==1.26.4
+transformers==4.51.0
+accelerate==1.8.1
+timm==0.8.13.dev0
+ultralytics==8.1.0
+omegaconf==2.3.0
+opencv-python==4.11.0.86
+setuptools==80.10.2
+lapx==0.10.0
+yt_dlp
