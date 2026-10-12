@@ -73,6 +73,39 @@ def safe_glob(path: Path, pattern: str):
         return
 
 
+def preflight_videos(cfg: dict) -> list[str]:
+    """Check every video before all; exclude recordings with a missing moov atom."""
+    import cv2
+
+    probe_cfg = {**cfg, 'pipeline': {**cfg.get('pipeline', {}), 'excluded_videos': []}}
+    videos = sorted({r.video_path for r in build_manifest(probe_cfg) if r.video_path})
+    excluded, errors = [], []
+    print(f'영상 사전 검사: {len(videos)}개', flush=True)
+    for video in videos:
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+             '-show_entries', 'stream=index', '-of', 'json', video],
+            capture_output=True, text=True, check=False)
+        if 'moov atom not found' in result.stderr.lower():
+            excluded.append(video)
+            continue
+        if result.returncode:
+            errors.append(f'{video}: {result.stderr.strip() or "ffprobe 실패"}')
+            continue
+        capture = cv2.VideoCapture(video)
+        try:
+            if not capture.isOpened():
+                errors.append(f'{video}: 영상 열기 실패')
+        finally:
+            capture.release()
+    print(f'영상 사전 검사 완료: {len(videos)}개 / moov 누락 skip {len(excluded)}개', flush=True)
+    for video in excluded:
+        print(f'WARNING: moov atom not found — 녹화 전체 skip: {video}', flush=True)
+    if errors:
+        raise RuntimeError('영상 사전 검사 실패:\n' + '\n'.join(errors))
+    return excluded
+
+
 def build_manifest(cfg: dict, deep: bool = False) -> list[Recording]:
     site, dates = cfg["site"], set(cfg["dates"])
     data_site = Path(cfg["data_path"]) if cfg.get("data_path") else Path(cfg["data_root"]) / site
@@ -115,6 +148,8 @@ def build_manifest(cfg: dict, deep: bool = False) -> list[Recording]:
                     if neighbor.is_file():
                         setattr(rec, f"{kind}_path", str(neighbor.resolve()))
                         setattr(rec, f"{kind}_bytes", neighbor.stat().st_size)
+    excluded = {str(Path(p).resolve()) for p in cfg.get('pipeline', {}).get('excluded_videos', [])}
+    records = {key: rec for key, rec in records.items() if rec.video_path not in excluded}
     for rec in records.values():
         missing = [kind for kind in ("raw", "bev", "video") if not getattr(rec, f"{kind}_path")]
         rec.status = "ok" if not missing else "missing_" + "_".join(missing)

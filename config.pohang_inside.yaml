@@ -1,9 +1,13 @@
 site: pohang_inside
 dates: ["2026-09-04", "2026-09-05"]
-data_root: data
+data_root: /mnt/nvme1n1/Olim/data/pohang
 video_root: /mnt/nvme1n1/Olim/data/pohang/pohang_inside
 output_root: output_pohang_inside
-bev_image: data/pohang_inside/bev_image.png
+bev_image: /mnt/nvme1n1/Olim/data/pohang/pohang_inside/bev.png
+
+extraction:
+  det_model: /mnt/nvme1n1/Olim/models/yolov8m.pt
+  pose_model: /mnt/nvme1n1/Olim/models/yolov8m-pose.pt
 
 tracking:
   high_confidence: 0.25

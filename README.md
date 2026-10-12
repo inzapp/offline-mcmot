@@ -111,6 +111,12 @@ PPT 생성은 YAML의 `pptx.template`, `pptx.prompt`를 지정하고 Codex CLI �
 처음 설치에는 Python 3.10과 인터넷이 필요하며, 영상 검증에는 `ffprobe`가 필요합니다.
 영상 마운트와 모델 파일 경로도 접근 가능해야 합니다.
 
+`all`은 RAW 추출 전에 전체 대상 영상을 `ffprobe`와 OpenCV로 사전 검사합니다.
+`moov atom not found` 영상은 경로 목록을 `WARNING` 로그로 출력하고,
+이번 실행의 RAW 추출·BEV 변환·검증·분석에서 해당 녹화 전체를 제외합니다
+(기존 RAW/BEV CSV가 있어도 제외). 전부 제외되면 경고 후 정상 종료합니다.
+그 밖의 영상 열기 실패는 사전 검사 오류로 처리합니다.
+
 Raw·BEV 생성 결과는 영상 옆에, 분석 결과는 YAML의 `output_root`에 저장합니다.
 기존 분석 출력이 있으면 번호가 붙은 새 출력 경로를 사용하며,
 입력·설정이 같은 분석 결과를 재사용하려면 `--resume`을 추가합니다.

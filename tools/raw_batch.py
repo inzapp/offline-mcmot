@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -11,8 +12,11 @@ from mcmot.raw import Extractor, DEFAULTS, add_arguments
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', required=True); parser.add_argument('--force', action='store_true')
+    parser.add_argument('--excluded-videos', type=Path, help='사전 검사에서 제외한 영상 경로 JSON 목록')
     add_arguments(parser); args = parser.parse_args()
     cfg = load_config(args.config)
+    if args.excluded_videos:
+        cfg.setdefault('pipeline', {})['excluded_videos'] = json.loads(args.excluded_videos.read_text(encoding='utf-8'))
     options = {**cfg.get('extraction', {}), **{k: getattr(args, k) for k in DEFAULTS if getattr(args, k) is not None}}
     extractor = Extractor(options)
     records = build_manifest(cfg)

@@ -6,9 +6,10 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 from .config import load_config, select_output_root
-from .inventory import build_manifest
+from .inventory import build_manifest, preflight_videos
 from .preparation import (bev_image, calibration_path, camera_matrix, convert_bev, file_signature,
                           image_candidates, roi_path, section_root, show_status, target_bev, validate_inputs)
 
@@ -174,6 +175,11 @@ def main(argv=None):
     show_status(cfg)
     if args.command == 'status':
         return
+    if args.command == 'all':
+        cfg['pipeline']['excluded_videos'] = preflight_videos(cfg)
+        if not build_manifest(cfg):
+            print('WARNING: 처리 가능한 녹화가 없어 all 실행을 종료합니다.', flush=True)
+            return
     sys.path.insert(0, str(ROOT / 'tools'))
     from bootstrap import analytics_environment, ultralytics_environment
     if args.command in ('run', 'all', 'pptx') or args.check_models:
@@ -193,7 +199,13 @@ def main(argv=None):
             value = getattr(args, key)
             if value is not None:
                 arguments += ['--' + key.replace('_', '-'), str(value)]
-        run_process(arguments)
+        if args.command == 'all':
+            with tempfile.TemporaryDirectory(prefix='mcmot-preflight-') as directory:
+                exclusions = Path(directory) / 'excluded_videos.json'
+                exclusions.write_text(json.dumps(cfg['pipeline']['excluded_videos']), encoding='utf-8')
+                run_process(arguments + ['--excluded-videos', exclusions])
+        else:
+            run_process(arguments)
         show_status(cfg)
     if args.command in ('bev', 'all'):
         prepare_bev(cfg, args.force)
