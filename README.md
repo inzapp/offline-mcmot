@@ -112,6 +112,8 @@ PPT 생성은 YAML의 `pptx.template`, `pptx.prompt`를 지정하고 Codex CLI �
 영상 마운트와 모델 파일 경로도 접근 가능해야 합니다.
 
 `all`은 RAW 추출 전에 전체 대상 영상을 `ffprobe`와 OpenCV로 사전 검사합니다.
+설정된 `pptx.template` 파일이 없으면 영상 검사와 분석을 시작하기 전에
+템플릿 경로를 포함한 `ERROR`를 출력하고 종료합니다.
 `moov atom not found` 영상은 경로 목록을 `WARNING` 로그로 출력하고,
 이번 실행의 RAW 추출·BEV 변환·검증·분석에서 해당 녹화 전체를 제외합니다
 (기존 RAW/BEV CSV가 있어도 제외). 전부 제외되면 경고 후 정상 종료합니다.

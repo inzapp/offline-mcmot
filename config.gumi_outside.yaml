@@ -106,3 +106,8 @@ visualization:
   fps: 10
   width: 1280
   height: 720
+
+pptx:
+  template: /mnt/nvme1n1/offline-mcmot/sample_output_pptx/GAMFF2026_구미_실내외_결과보고서_ROI반영_v3.pptx
+  prompt: prompts/report_pptx.md
+  timeout_seconds: 1800

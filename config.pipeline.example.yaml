@@ -1,5 +1,5 @@
 # data_path, dates, 모델 경로와 spatial 구역을 실제 데이터에 맞게 변경하세요.
-# PPT를 포함하려면 pptx.template 경로를 추가하세요.
+# PPT는 지정된 pptx.template과 pptx.prompt를 사용해 all 실행 시 자동 생성됩니다.
 site: section_example
 dates:
 - '2026-09-03'
@@ -100,5 +100,6 @@ extraction:
 recording:
   duration_tolerance_seconds: 3
 pptx:
+  template: /mnt/nvme1n1/offline-mcmot/sample_output_pptx/GAMFF2026_구미_실내외_결과보고서_ROI반영_v3.pptx
   prompt: prompts/report_pptx.md
   timeout_seconds: 1800

@@ -168,6 +168,10 @@ def main(argv=None):
     if not args.config:
         parser.error('--config is required for commands other than setup')
     cfg = load_config(args.config)
+    if args.command == 'all' and cfg.get('pptx', {}).get('template'):
+        template = Path(cfg['pptx']['template'])
+        if not template.is_file():
+            raise FileNotFoundError(f'PPTX 템플릿 파일 없음: {template}')
     cfg.setdefault('pipeline', {}).setdefault('strict', True)
     if cfg.get('attributes', {}).get('backend') == 'mivolo':
         cfg['attributes'].setdefault('repository', str(ROOT / 'vendor/mivolo'))

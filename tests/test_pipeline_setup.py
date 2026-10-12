@@ -71,6 +71,41 @@ class PipelineSetupTest(unittest.TestCase):
         self.analytics.assert_not_called()
         self.ultralytics.assert_not_called()
 
+    def test_all_rejects_missing_template_before_status_preflight_or_installation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / 'config.yaml'
+            config.write_text('pptx:\n  template: template.pptx\n', encoding='utf-8')
+            for directory_instead_of_file in (False, True):
+                if directory_instead_of_file:
+                    (root / 'template.pptx').mkdir()
+                with self.subTest(directory_instead_of_file=directory_instead_of_file), \
+                        patch('mcmot.pipeline.show_status') as status, \
+                        patch('mcmot.pipeline.preflight_videos') as preflight, \
+                        patch('mcmot.pipeline.run_process') as run:
+                    with self.assertRaises(FileNotFoundError) as caught:
+                        main(['all', '--config', str(config)])
+                    self.assertIn(str(root / 'template.pptx'), str(caught.exception))
+                    status.assert_not_called()
+                    preflight.assert_not_called()
+                    run.assert_not_called()
+        self.analytics.assert_not_called()
+        self.ultralytics.assert_not_called()
+
+    def test_all_accepts_existing_template_and_reaches_video_preflight(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'template.pptx').write_bytes(b'template')
+            config = root / 'config.yaml'
+            config.write_text('pptx:\n  template: template.pptx\n', encoding='utf-8')
+            with patch('mcmot.pipeline.show_status'), \
+                    patch('mcmot.pipeline.preflight_videos', return_value=[]) as preflight, \
+                    patch('mcmot.pipeline.build_manifest', return_value=[]), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                main(['all', '--config', str(config)])
+            preflight.assert_called_once()
+            self.assertEqual(preflight.call_args.args[0]['pptx']['template'], str(root / 'template.pptx'))
+
 
 if __name__ == '__main__':
     unittest.main()
