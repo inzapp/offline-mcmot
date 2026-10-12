@@ -64,7 +64,10 @@ def ultralytics_environment(attributes=None):
         vision = attributes.get('torchvision_version', '0.22.1')
         install(python, 'torch', [f'torch=={torch}', f'torchvision=={vision}', '--index-url', index], f'{torch}|{vision}|{index}')
         install(python, 'mivolo', ['-r', str(req)], req.read_text() + str(repo))
-        install(python, 'mivolo-vendor', ['--no-deps', '--no-build-isolation', str(repo)], str(repo) + (repo / 'setup.py').read_text())
+        # Include package sources so restored/updated vendor files trigger reinstall.
+        sources = [repo / 'setup.py', *sorted((repo / 'mivolo').rglob('*.py'))]
+        fingerprint = str(repo) + ''.join(str(p.relative_to(repo)) + p.read_text() for p in sources)
+        install(python, 'mivolo-vendor', ['--no-deps', '--no-build-isolation', str(repo)], fingerprint)
     else:
         # Do not upgrade an already shared MiVOLO environment to a different YOLO version.
         shared = python.parent.parent / '.pipeline-mivolo'

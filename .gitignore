@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 data/
+!vendor/mivolo/mivolo/data/
 output/
 output_*/
 .pytest_cache/
